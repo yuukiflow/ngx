@@ -1,0 +1,91 @@
+# Installation
+
+## Requirements
+
+- Linux (ngx reads `/proc` to inspect processes)
+- nginx
+- certbot, for Let's Encrypt (optional; see [ssl.md](ssl.md))
+- To build: Rust 1.85 or newer (`rustup` or your distribution's `rust` package)
+
+## Build and install
+
+```
+git clone <repo> ngx && cd ngx
+cargo install --path .
+```
+
+This builds an optimized binary and puts it in `~/.cargo/bin/ngx`. That directory is on your PATH if you installed
+Rust with rustup.
+
+### Using it with sudo
+
+Commands that change the configuration must run as root. `sudo` usually resets PATH, so `sudo ngx` won't find
+`~/.cargo/bin/ngx`. Install it system-wide once:
+
+```
+sudo install -m755 ~/.cargo/bin/ngx /usr/local/bin/ngx
+```
+
+(or call `sudo ~/.cargo/bin/ngx …` every time).
+
+### On a server without Rust
+
+Build on any machine with the same CPU architecture and a glibc that isn't newer than the server's, then copy the
+single binary over:
+
+```
+cargo build --release
+scp target/release/ngx server:/tmp/ && ssh server 'sudo install -m755 /tmp/ngx /usr/local/bin/ngx'
+```
+
+If the server's distribution is older than your build machine (`GLIBC_2.xx not found`), build a static binary instead:
+
+```
+rustup target add x86_64-unknown-linux-musl
+cargo build --release --target x86_64-unknown-linux-musl
+# → target/x86_64-unknown-linux-musl/release/ngx
+```
+
+## Man pages
+
+```
+ngx man man/                                   # generates ngx.1, ngx-add.1, ngx-cert-issue.1, …
+sudo install -Dm644 -t /usr/local/share/man/man1 man/*.1
+man ngx
+man ngx-edit
+```
+
+A copy of the generated pages is in the repository's `man/` directory.
+
+## First run
+
+```
+ngx doctor          # what's installed, what's missing
+sudo ngx init       # only needed on Arch / Fedora / nginx.org packages (no sites-enabled/)
+ngx ls              # your existing sites
+sudo ngx add        # create one
+```
+
+ngx works with the sites you already have; no migration is needed. They're listed and monitored as they are, and
+only change when you run a command on them.
+
+## Upgrade
+
+```
+git pull && cargo install --path .
+sudo install -m755 ~/.cargo/bin/ngx /usr/local/bin/ngx     # if you installed it system-wide
+```
+
+Site IDs, backups and generated configs are kept across upgrades.
+
+## Uninstall
+
+```
+sudo rm /usr/local/bin/ngx ~/.cargo/bin/ngx
+sudo rm -r /var/lib/ngx      # IDs, backups, ACME webroot
+```
+
+Your nginx configs stay where they are and keep working. If you remove `/var/lib/ngx`, delete or edit the
+`location ^~ /.well-known/acme-challenge/` blocks in ngx-generated configs, or recreate the empty
+`/var/lib/ngx/acme` directory, so Let's Encrypt renewals still work. `00-ngx-logformat.conf` must stay as long as
+any site uses `access_log … ngx`.

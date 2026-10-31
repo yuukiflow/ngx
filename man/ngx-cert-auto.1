@@ -1,0 +1,30 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH ngx-cert-auto 1  "ngx-cert-auto " 
+.SH NAME
+ngx\-cert\-auto \- Turn automatic renewal on or off (sets `autorenew` in the certbot renewal config)
+.SH SYNOPSIS
+\fBngx\-cert\-auto\fR [\fB\-h\fR|\fB\-\-help\fR] <\fISITE\fR> <\fISTATE\fR> 
+.SH DESCRIPTION
+Turn automatic renewal on or off (sets `autorenew` in the certbot renewal config)
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fISITE\fR>
+Site ID or domain
+.TP
+<\fISTATE\fR>
+
+.br
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+on
+.IP \(bu 2
+off
+.RE
+.SH EXTRA
+Example:
+  sudo ngx cert auto 2 on

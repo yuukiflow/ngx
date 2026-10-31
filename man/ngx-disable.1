@@ -1,0 +1,19 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH ngx-disable 1  "ngx-disable " 
+.SH NAME
+ngx\-disable \- Disable a site without deleting it (`ngx enable` brings it back with the same ID)
+.SH SYNOPSIS
+\fBngx\-disable\fR [\fB\-\-dry\-run\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fISITE\fR> 
+.SH DESCRIPTION
+Disable a site without deleting it (`ngx enable` brings it back with the same ID)
+.SH OPTIONS
+.TP
+\fB\-\-dry\-run\fR
+Show what would change without touching anything
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fISITE\fR>
+Site ID (from `ngx ls`) or any of its domain names

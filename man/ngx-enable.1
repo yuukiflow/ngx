@@ -1,0 +1,19 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH ngx-enable 1  "ngx-enable " 
+.SH NAME
+ngx\-enable \- Enable a disabled site
+.SH SYNOPSIS
+\fBngx\-enable\fR [\fB\-\-dry\-run\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fISITE\fR> 
+.SH DESCRIPTION
+Enable a disabled site
+.SH OPTIONS
+.TP
+\fB\-\-dry\-run\fR
+Show what would change without touching anything
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fISITE\fR>
+Site ID (from `ngx ls`) or any of its domain names

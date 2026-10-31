@@ -1,0 +1,27 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH ngx-cert-issue 1  "ngx-cert-issue " 
+.SH NAME
+ngx\-cert\-issue \- Obtain a Let\*(Aqs Encrypt certificate for a site and switch it to HTTPS
+.SH SYNOPSIS
+\fBngx\-cert\-issue\fR [\fB\-\-email\fR] [\fB\-\-staging\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fISITE\fR> 
+.SH DESCRIPTION
+Obtain a Let\*(Aqs Encrypt certificate for a site and switch it to HTTPS
+.SH OPTIONS
+.TP
+\fB\-\-email\fR \fI<EMAIL>\fR
+Email for expiry notices
+.TP
+\fB\-\-staging\fR
+Use the Let\*(Aqs Encrypt staging server
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fISITE\fR>
+Site ID or domain
+.SH EXTRA
+ngx\-created sites use the ACME webroot (certbot certonly \-\-webroot); other sites use certbot\*(Aqs nginx plugin (certbot \-\-nginx).
+
+Example:
+  sudo ngx cert issue 5 \-\-email me@example.com

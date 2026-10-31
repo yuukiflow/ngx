@@ -1,0 +1,21 @@
+# Build output
+/target
+
+# Demo sandbox (python3 demo/make_demo.py)
+/demo-root
+__pycache__/
+
+# Claude Code / AI assistant files
+.claude/
+CLAUDE.md
+CLAUDE.local.md
+**/CLAUDE.md
+.mcp.json
+.claudeignore
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store

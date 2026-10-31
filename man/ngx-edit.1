@@ -1,0 +1,77 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH ngx-edit 1  "ngx-edit " 
+.SH NAME
+ngx\-edit \- Change a site\*(Aqs settings: same questions as `add`, pre\-filled with the current values
+.SH SYNOPSIS
+\fBngx\-edit\fR [\fB\-\-raw\fR] [\fB\-d\fR|\fB\-\-domain\fR] [\fB\-a\fR|\fB\-\-alias\fR] [\fB\-t\fR|\fB\-\-type\fR] [\fB\-l\fR|\fB\-\-local\fR] [\fB\-\-root\fR] [\fB\-\-socket\fR] [\fB\-i\fR|\fB\-\-in\fR] [\fB\-\-ssl\fR] [\fB\-\-cert\fR] [\fB\-\-key\fR] [\fB\-\-email\fR] [\fB\-\-websocket\fR] [\fB\-\-no\-redirect\fR] [\fB\-\-staging\fR] [\fB\-y\fR|\fB\-\-yes\fR] [\fB\-\-dry\-run\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fISITE\fR> 
+.SH DESCRIPTION
+Change a site\*(Aqs settings: same questions as `add`, pre\-filled with the current values
+.SH OPTIONS
+.TP
+\fB\-\-raw\fR
+Open the raw nginx file in $EDITOR (validated with nginx \-t before it is applied)
+.TP
+\fB\-d\fR, \fB\-\-domain\fR \fI<DOMAIN>\fR
+Primary domain, e.g. app.example.com (with edit: the new domain)
+.TP
+\fB\-a\fR, \fB\-\-alias\fR \fI<NAME>\fR
+Extra server name, repeatable: \-a www.example.com \-a example.org (with edit: replaces the list)
+.TP
+\fB\-t\fR, \fB\-\-type\fR \fI<TYPE>\fR
+Site type: proxy | static | php
+.TP
+\fB\-l\fR, \fB\-\-local\fR \fI<PORT|HOST:PORT>\fR
+Upstream for a proxy site: PORT (on 127.0.0.1) or HOST:PORT
+.TP
+\fB\-\-root\fR \fI<DIR>\fR
+Document root for static / php sites (default /var/www/<domain>, created if missing)
+.TP
+\fB\-\-socket\fR \fI<PATH>\fR
+php\-fpm socket for php sites (default: the one found in /run/php)
+.TP
+\fB\-i\fR, \fB\-\-in\fR \fI<PORT>\fR
+Public port (default 443 with SSL, 80 without)
+.TP
+\fB\-\-ssl\fR \fI<MODE>\fR
+SSL: letsencrypt | existing | none
+.TP
+\fB\-\-cert\fR \fI<PATH>\fR
+Certificate (fullchain) path, with \-\-ssl existing
+.TP
+\fB\-\-key\fR \fI<PATH>\fR
+Private key path, with \-\-ssl existing
+.TP
+\fB\-\-email\fR \fI<EMAIL>\fR
+Email for Let\*(Aqs Encrypt expiry notices (asked once if no certbot account exists)
+.TP
+\fB\-\-websocket\fR
+Proxy WebSocket upgrades
+.TP
+\fB\-\-no\-redirect\fR
+Don\*(Aqt redirect HTTP (port 80) to HTTPS
+.TP
+\fB\-\-staging\fR
+Use the Let\*(Aqs Encrypt staging server (for testing; certificates are not trusted)
+.TP
+\fB\-y\fR, \fB\-\-yes\fR
+No prompts: use flags, and current values / defaults for the rest
+.TP
+\fB\-\-dry\-run\fR
+Show the config and what would change without touching anything
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fISITE\fR>
+Site ID (from `ngx ls`) or any of its domain names
+.SH EXTRA
+Without flags every question is asked again with the current value as default (press Enter to keep it). With \-y, only the given flags change.
+
+Examples:
+  sudo ngx edit 3
+  sudo ngx edit 3 \-y \-\-local 4000         move the upstream port
+  sudo ngx edit 3 \-y \-d new.example.com   rename (ID is kept)
+  sudo ngx edit 3 \-y \-a www.example.com   set aliases (adds them to the certificate)
+  sudo ngx edit 3 \-y \-\-ssl letsencrypt    switch to HTTPS
+  sudo ngx edit 3 \-\-raw                   open the nginx file in $EDITOR instead

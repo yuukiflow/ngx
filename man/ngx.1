@@ -1,0 +1,75 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH ngx 1  "ngx 0.1.0" 
+.SH NAME
+ngx \- Manage nginx sites and Let\*(Aqs Encrypt certificates
+.SH SYNOPSIS
+\fBngx\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIsubcommands\fR]
+.SH DESCRIPTION
+Manage nginx sites and Let\*(Aqs Encrypt certificates.
+.PP
+Run without a command to open the full\-screen dashboard. Every change is backed up, validated with `nginx \-t`, rolled back on failure and followed by a reload that waits until nginx has picked up the new configuration.
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
+.SH SUBCOMMANDS
+.TP
+ngx\-ls(1)
+List sites with status, SSL, renewal, ports and errors
+.TP
+ngx\-show(1)
+Show everything about one site: SSL, routing, backend process, locations, logs, traffic
+.TP
+ngx\-add(1)
+Create and enable a new site (asks for anything not given as a flag)
+.TP
+ngx\-edit(1)
+Change a site\*(Aqs settings: same questions as `add`, pre\-filled with the current values
+.TP
+ngx\-rm(1)
+Remove a site\*(Aqs configuration (a backup is kept)
+.TP
+ngx\-enable(1)
+Enable a disabled site
+.TP
+ngx\-disable(1)
+Disable a site without deleting it (`ngx enable` brings it back with the same ID)
+.TP
+ngx\-cert(1)
+Certificates: info, issue, renew, auto\-renewal on/off (wraps certbot)
+.TP
+ngx\-logs(1)
+Show a site\*(Aqs access log (or error log with \-e)
+.TP
+ngx\-test(1)
+Validate the nginx configuration (`nginx \-t`)
+.TP
+ngx\-reload(1)
+Validate, then reload nginx (waits until the new config is live)
+.TP
+ngx\-doctor(1)
+Check the environment: nginx, certbot, layout, renewal timer, permissions
+.TP
+ngx\-init(1)
+Create sites\-available/ + sites\-enabled/ and include them from nginx.conf (Arch, RHEL, …)
+.TP
+ngx\-tui(1)
+Full\-screen dashboard (also the default when no command is given)
+.TP
+ngx\-help(1)
+Print this message or the help of the given subcommand(s)
+.SH EXTRA
+Examples:
+  ngx                      open the dashboard
+  ngx ls                   list sites
+  ngx show 4               details of site #4
+  sudo ngx add             create a site (interactive)
+  sudo ngx edit api.example.com \-\-local 8081 \-y
+
+Docs: docs/README.md · man ngx
+.SH VERSION
+v0.1.0

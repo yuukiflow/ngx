@@ -1,0 +1,24 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH ngx-show 1  "ngx-show " 
+.SH NAME
+ngx\-show \- Show everything about one site: SSL, routing, backend process, locations, logs, traffic
+.SH SYNOPSIS
+\fBngx\-show\fR [\fB\-\-json\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fISITE\fR> 
+.SH DESCRIPTION
+Show everything about one site: SSL, routing, backend process, locations, logs, traffic
+.SH OPTIONS
+.TP
+\fB\-\-json\fR
+Print JSON instead of the detail view
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fISITE\fR>
+Site ID (from `ngx ls`) or any of its domain names
+.SH EXTRA
+Examples:
+  ngx show 4
+  ngx show blog.example.com
+  ngx show 4 \-\-json

@@ -1,0 +1,69 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH ngx-add 1  "ngx-add " 
+.SH NAME
+ngx\-add \- Create and enable a new site (asks for anything not given as a flag)
+.SH SYNOPSIS
+\fBngx\-add\fR [\fB\-d\fR|\fB\-\-domain\fR] [\fB\-a\fR|\fB\-\-alias\fR] [\fB\-t\fR|\fB\-\-type\fR] [\fB\-l\fR|\fB\-\-local\fR] [\fB\-\-root\fR] [\fB\-\-socket\fR] [\fB\-i\fR|\fB\-\-in\fR] [\fB\-\-ssl\fR] [\fB\-\-cert\fR] [\fB\-\-key\fR] [\fB\-\-email\fR] [\fB\-\-websocket\fR] [\fB\-\-no\-redirect\fR] [\fB\-\-staging\fR] [\fB\-y\fR|\fB\-\-yes\fR] [\fB\-\-dry\-run\fR] [\fB\-h\fR|\fB\-\-help\fR] 
+.SH DESCRIPTION
+Create and enable a new site (asks for anything not given as a flag)
+.SH OPTIONS
+.TP
+\fB\-d\fR, \fB\-\-domain\fR \fI<DOMAIN>\fR
+Primary domain, e.g. app.example.com (with edit: the new domain)
+.TP
+\fB\-a\fR, \fB\-\-alias\fR \fI<NAME>\fR
+Extra server name, repeatable: \-a www.example.com \-a example.org (with edit: replaces the list)
+.TP
+\fB\-t\fR, \fB\-\-type\fR \fI<TYPE>\fR
+Site type: proxy | static | php
+.TP
+\fB\-l\fR, \fB\-\-local\fR \fI<PORT|HOST:PORT>\fR
+Upstream for a proxy site: PORT (on 127.0.0.1) or HOST:PORT
+.TP
+\fB\-\-root\fR \fI<DIR>\fR
+Document root for static / php sites (default /var/www/<domain>, created if missing)
+.TP
+\fB\-\-socket\fR \fI<PATH>\fR
+php\-fpm socket for php sites (default: the one found in /run/php)
+.TP
+\fB\-i\fR, \fB\-\-in\fR \fI<PORT>\fR
+Public port (default 443 with SSL, 80 without)
+.TP
+\fB\-\-ssl\fR \fI<MODE>\fR
+SSL: letsencrypt | existing | none
+.TP
+\fB\-\-cert\fR \fI<PATH>\fR
+Certificate (fullchain) path, with \-\-ssl existing
+.TP
+\fB\-\-key\fR \fI<PATH>\fR
+Private key path, with \-\-ssl existing
+.TP
+\fB\-\-email\fR \fI<EMAIL>\fR
+Email for Let\*(Aqs Encrypt expiry notices (asked once if no certbot account exists)
+.TP
+\fB\-\-websocket\fR
+Proxy WebSocket upgrades
+.TP
+\fB\-\-no\-redirect\fR
+Don\*(Aqt redirect HTTP (port 80) to HTTPS
+.TP
+\fB\-\-staging\fR
+Use the Let\*(Aqs Encrypt staging server (for testing; certificates are not trusted)
+.TP
+\fB\-y\fR, \fB\-\-yes\fR
+No prompts: use flags, and current values / defaults for the rest
+.TP
+\fB\-\-dry\-run\fR
+Show the config and what would change without touching anything
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.SH EXTRA
+Examples:
+  sudo ngx add                                    interactive
+  sudo ngx add \-y \-d app.example.com \-l 3000      proxy to :3000 + Let\*(Aqs Encrypt
+  sudo ngx add \-y \-d app.example.com \-l 3000 \-\-websocket \-\-email me@example.com
+  sudo ngx add \-y \-d docs.example.com \-\-root /var/www/docs \-\-ssl none  static, HTTP only
+  sudo ngx add \-y \-d blog.example.com \-t php \-\-root /var/www/blog
+  ngx add \-y \-d app.example.com \-l 3000 \-\-dry\-run  preview only

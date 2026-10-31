@@ -1,0 +1,19 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH ngx-cert-renew 1  "ngx-cert-renew " 
+.SH NAME
+ngx\-cert\-renew \- Renew a site\*(Aqs certificate now and reload nginx
+.SH SYNOPSIS
+\fBngx\-cert\-renew\fR [\fB\-\-force\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fISITE\fR> 
+.SH DESCRIPTION
+Renew a site\*(Aqs certificate now and reload nginx
+.SH OPTIONS
+.TP
+\fB\-\-force\fR
+Renew even if it is not close to expiry
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fISITE\fR>
+Site ID or domain

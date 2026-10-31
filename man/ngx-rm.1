@@ -1,0 +1,29 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH ngx-rm 1  "ngx-rm " 
+.SH NAME
+ngx\-rm \- Remove a site\*(Aqs configuration (a backup is kept)
+.SH SYNOPSIS
+\fBngx\-rm\fR [\fB\-\-delete\-cert\fR] [\fB\-y\fR|\fB\-\-yes\fR] [\fB\-\-dry\-run\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fISITE\fR> 
+.SH DESCRIPTION
+Remove a site\*(Aqs configuration (a backup is kept)
+.SH OPTIONS
+.TP
+\fB\-\-delete\-cert\fR
+Also delete its certbot certificate (`certbot delete`)
+.TP
+\fB\-y\fR, \fB\-\-yes\fR
+Don\*(Aqt ask for confirmation
+.TP
+\fB\-\-dry\-run\fR
+Show what would change without touching anything
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fISITE\fR>
+Site ID (from `ngx ls`) or any of its domain names
+.SH EXTRA
+Examples:
+  sudo ngx rm 5
+  sudo ngx rm old.example.com \-\-delete\-cert \-y

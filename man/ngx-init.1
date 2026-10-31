@@ -1,0 +1,19 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH ngx-init 1  "ngx-init " 
+.SH NAME
+ngx\-init \- Create sites\-available/ + sites\-enabled/ and include them from nginx.conf (Arch, RHEL, …)
+.SH SYNOPSIS
+\fBngx\-init\fR [\fB\-y\fR|\fB\-\-yes\fR] [\fB\-\-dry\-run\fR] [\fB\-h\fR|\fB\-\-help\fR] 
+.SH DESCRIPTION
+Create sites\-available/ + sites\-enabled/ and include them from nginx.conf (Arch, RHEL, …)
+.SH OPTIONS
+.TP
+\fB\-y\fR, \fB\-\-yes\fR
+Don\*(Aqt ask for confirmation
+.TP
+\fB\-\-dry\-run\fR
+Show what would change without touching anything
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help

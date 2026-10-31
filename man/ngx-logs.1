@@ -1,0 +1,29 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH ngx-logs 1  "ngx-logs " 
+.SH NAME
+ngx\-logs \- Show a site\*(Aqs access log (or error log with \-e)
+.SH SYNOPSIS
+\fBngx\-logs\fR [\fB\-e\fR|\fB\-\-error\fR] [\fB\-f\fR|\fB\-\-follow\fR] [\fB\-n\fR|\fB\-\-lines\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fISITE\fR> 
+.SH DESCRIPTION
+Show a site\*(Aqs access log (or error log with \-e)
+.SH OPTIONS
+.TP
+\fB\-e\fR, \fB\-\-error\fR
+Error log instead of access log
+.TP
+\fB\-f\fR, \fB\-\-follow\fR
+Keep following new lines (Ctrl\-C to stop)
+.TP
+\fB\-n\fR, \fB\-\-lines\fR \fI<LINES>\fR [default: 50]
+Number of lines to show
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fISITE\fR>
+Site ID (from `ngx ls`) or any of its domain names
+.SH EXTRA
+Examples:
+  ngx logs 4 \-f
+  ngx logs 4 \-e \-n 200
