@@ -1,0 +1,21 @@
+
+app.example.com                                                       ● UP
+──────────────────────────────────────────────────────────────────────────
+ID              1
+Aliases         www.app.example.com
+Config          /etc/nginx/sites-enabled/app.conf  (modified 01/01/26 12:00)
+
+ROUTING
+  Inbound       :80 (HTTP)
+  Type          reverse proxy
+  Upstream      127.0.0.1:3000
+
+BACKEND
+  Process       running  ·  no process details in sandbox
+
+LOCATIONS
+  /             → proxy 127.0.0.1:3000  (WebSocket upgrade)
+  /api/         → proxy 127.0.0.1:8080
+
+LOGS
+  Access        /var/log/nginx/app.access.log

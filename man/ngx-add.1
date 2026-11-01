@@ -4,7 +4,7 @@
 .SH NAME
 ngx\-add \- Create and enable a new site (asks for anything not given as a flag)
 .SH SYNOPSIS
-\fBngx\-add\fR [\fB\-d\fR|\fB\-\-domain\fR] [\fB\-a\fR|\fB\-\-alias\fR] [\fB\-t\fR|\fB\-\-type\fR] [\fB\-l\fR|\fB\-\-local\fR] [\fB\-\-root\fR] [\fB\-\-socket\fR] [\fB\-i\fR|\fB\-\-in\fR] [\fB\-\-ssl\fR] [\fB\-\-cert\fR] [\fB\-\-key\fR] [\fB\-\-email\fR] [\fB\-\-websocket\fR] [\fB\-\-no\-redirect\fR] [\fB\-\-staging\fR] [\fB\-y\fR|\fB\-\-yes\fR] [\fB\-\-dry\-run\fR] [\fB\-h\fR|\fB\-\-help\fR] 
+\fBngx\-add\fR [\fB\-d\fR|\fB\-\-domain\fR] [\fB\-a\fR|\fB\-\-alias\fR] [\fB\-t\fR|\fB\-\-type\fR] [\fB\-l\fR|\fB\-\-local\fR] [\fB\-\-root\fR] [\fB\-\-socket\fR] [\fB\-i\fR|\fB\-\-in\fR] [\fB\-\-ssl\fR] [\fB\-\-cert\fR] [\fB\-\-key\fR] [\fB\-\-email\fR] [\fB\-\-websocket\fR] [\fB\-\-no\-redirect\fR] [\fB\-\-staging\fR] [\fB\-\-dns\fR] [\fB\-\-dns\-credentials\fR] [\fB\-\-max\-body\fR] [\fB\-\-hsts\fR] [\fB\-\-auth\fR] [\fB\-\-rate\-limit\fR] [\fB\-\-canonical\fR] [\fB\-\-route\fR] [\fB\-y\fR|\fB\-\-yes\fR] [\fB\-\-dry\-run\fR] [\fB\-h\fR|\fB\-\-help\fR] 
 .SH DESCRIPTION
 Create and enable a new site (asks for anything not given as a flag)
 .SH OPTIONS
@@ -40,7 +40,7 @@ Certificate (fullchain) path, with \-\-ssl existing
 Private key path, with \-\-ssl existing
 .TP
 \fB\-\-email\fR \fI<EMAIL>\fR
-Email for Let\*(Aqs Encrypt expiry notices (asked once if no certbot account exists)
+Email for the Let\*(Aqs Encrypt account (asked once if none exists). Let\*(Aqs Encrypt no longer sends expiry emails: use `ngx check` to monitor
 .TP
 \fB\-\-websocket\fR
 Proxy WebSocket upgrades
@@ -50,6 +50,60 @@ Don\*(Aqt redirect HTTP (port 80) to HTTPS
 .TP
 \fB\-\-staging\fR
 Use the Let\*(Aqs Encrypt staging server (for testing; certificates are not trusted)
+.TP
+\fB\-\-dns\fR \fI<PLUGIN>\fR
+Let\*(Aqs Encrypt with the DNS challenge through this certbot plugin (cloudflare, route53, digitalocean…): wildcards, no port 80 needed
+.TP
+\fB\-\-dns\-credentials\fR \fI<FILE>\fR
+Credentials file for the DNS plugin (e.g. /root/.secrets/cloudflare.ini, mode 600)
+.TP
+\fB\-\-max\-body\fR \fI<SIZE>\fR
+Maximum upload (request body) size, e.g. 50m; `off` for nginx\*(Aqs default (1m)
+.TP
+\fB\-\-hsts\fR \fI<on|off>\fR
+HSTS: tell browsers to always use HTTPS for this domain (on | off)
+.br
+
+.br
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+on
+.IP \(bu 2
+off
+.RE
+.TP
+\fB\-\-auth\fR \fI<on|off>\fR
+Password\-protect the site (users: `ngx auth add <site> <user>`) (on | off)
+.br
+
+.br
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+on
+.IP \(bu 2
+off
+.RE
+.TP
+\fB\-\-rate\-limit\fR \fI<RATE>\fR
+Limit requests per client, e.g. 10r/s or 300r/m; `off` to remove
+.TP
+\fB\-\-canonical\fR \fI<on|off>\fR
+Redirect the aliases (e.g. www.) to the main domain (on | off)
+.br
+
+.br
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+on
+.IP \(bu 2
+off
+.RE
+.TP
+\fB\-\-route\fR \fI<PATH=PORT>\fR
+Proxy a path to another local app, repeatable: \-\-route /api=8080 \-\-route /ws=10.0.0.5:9000 (with edit: replaces the list; `\-\-route off` removes all)
 .TP
 \fB\-y\fR, \fB\-\-yes\fR
 No prompts: use flags, and current values / defaults for the rest

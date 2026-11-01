@@ -1,0 +1,1 @@
+{"domain":"x.test","inbound":80,"backend":{"type":"php","socket":"/run/php/x.sock","root":"/var/www/x"},"ssl":{"mode":"none"}}

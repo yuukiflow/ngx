@@ -1,0 +1,17 @@
+
+staging.example.com                                                 ○ DOWN
+──────────────────────────────────────────────────────────────────────────
+ID              4
+Config          /etc/nginx/sites-enabled/staging.conf  (modified 01/01/26 12:00)
+Problem         502 Bad Gateway: upstream 127.0.0.1:4000 refused connection
+
+ROUTING
+  Inbound       :80 (HTTP)
+  Type          reverse proxy
+  Upstream      127.0.0.1:4000
+
+BACKEND
+  Process       not running
+
+LOCATIONS
+  /             → proxy 127.0.0.1:4000

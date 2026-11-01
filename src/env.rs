@@ -135,11 +135,55 @@ pub fn run(cmd: &str, args: &[&str]) -> Option<(bool, String)> {
     Some((out.status.success(), s.trim().to_string()))
 }
 
-/// Error out unless we can modify the system.
-pub fn require_root() -> anyhow::Result<()> {
+/// Error out unless we can modify the system; otherwise take the change lock.
+/// Keep the returned guard alive for the whole command.
+pub fn require_root() -> anyhow::Result<Lock> {
     if is_root() || Env::get().sandboxed() {
-        Ok(())
+        lock()
     } else {
         anyhow::bail!("this command modifies nginx configuration and must run as root (try: sudo ngx ...)")
+    }
+}
+
+/// Exclusive lock on `<state dir>/lock`, so two ngx processes (say the dashboard
+/// and a command in another terminal) never interleave their changes, backups and
+/// rollbacks. Re-entrant within one process.
+#[must_use = "the lock is released when the guard is dropped"]
+pub struct Lock(bool);
+
+static LOCK: std::sync::Mutex<(usize, Option<std::fs::File>)> = std::sync::Mutex::new((0, None));
+
+pub fn lock() -> anyhow::Result<Lock> {
+    use std::os::fd::AsRawFd;
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+    let mut g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    if g.0 > 0 {
+        g.0 += 1;
+        return Ok(Lock(true));
+    }
+    let env = Env::get();
+    let dir = env.host(&env.state_dir);
+    std::fs::DirBuilder::new().recursive(true).mode(0o755).create(&dir)?;
+    let f = std::fs::OpenOptions::new().create(true).truncate(false).write(true).mode(0o600).custom_flags(libc::O_NOFOLLOW).open(dir.join("lock"))?;
+    if unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        eprintln!("waiting for another ngx command to finish…");
+        if unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX) } != 0 {
+            anyhow::bail!("cannot lock {}: {}", dir.join("lock").display(), std::io::Error::last_os_error());
+        }
+    }
+    *g = (1, Some(f));
+    Ok(Lock(true))
+}
+
+impl Drop for Lock {
+    fn drop(&mut self) {
+        if !self.0 {
+            return;
+        }
+        let mut g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        g.0 = g.0.saturating_sub(1);
+        if g.0 == 0 {
+            g.1 = None; // closing the file releases the flock
+        }
     }
 }

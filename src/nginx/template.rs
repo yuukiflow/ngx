@@ -20,8 +20,30 @@ pub enum Backend {
 #[serde(tag = "mode", rename_all = "lowercase")]
 pub enum Ssl {
     None,
+    /// Let's Encrypt with the HTTP challenge (served from the ACME webroot).
     LetsEncrypt,
+    /// Let's Encrypt with a DNS challenge through a certbot DNS plugin
+    /// (`certbot-dns-<plugin>`): works for wildcards and for servers that
+    /// aren't reachable on port 80.
+    #[serde(rename = "letsencrypt-dns")]
+    LetsEncryptDns {
+        plugin: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        credentials: Option<String>,
+    },
     Existing { cert: String, key: String },
+}
+
+impl Ssl {
+    pub fn is_letsencrypt(&self) -> bool {
+        matches!(self, Ssl::LetsEncrypt | Ssl::LetsEncryptDns { .. })
+    }
+}
+
+/// certbot lineage name for a domain (`*.example.com` → `wildcard.example.com`,
+/// so no `*` ends up in paths).
+pub fn cert_name(domain: &str) -> String {
+    domain.replace('*', "wildcard")
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -39,6 +61,84 @@ pub struct Spec {
     pub access_log: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error_log: Option<String>,
+    #[serde(flatten)]
+    pub opts: Options,
+}
+
+/// Optional site settings. All default to off, so specs written by older
+/// versions read the same.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default)]
+pub struct Options {
+    /// `client_max_body_size`, e.g. `50m` (nginx's default is 1m).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_body: Option<String>,
+    /// Send `Strict-Transport-Security` (HTTPS sites).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub hsts: bool,
+    /// Password protection with `ngx.d/<domain>/htpasswd` (users: `ngx auth`).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub auth: bool,
+    /// Per-client request rate, e.g. `10r/s`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rate_limit: Option<String>,
+    /// Redirect the aliases (e.g. www.) to the main domain.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub canonical: bool,
+    /// Extra paths proxied to other local apps (`/api/` → 127.0.0.1:8080).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub routes: Vec<Route>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Route {
+    /// Normalized to start and end with `/`.
+    pub path: String,
+    pub host: String,
+    pub port: u16,
+}
+
+impl Route {
+    /// `/api=8080`, `/api=10.0.0.5:8080`
+    pub fn parse(s: &str) -> Option<Route> {
+        let (path, target) = s.split_once('=')?;
+        let (host, port) = match target.rsplit_once(':') {
+            Some((h, p)) => (h.to_string(), p.parse().ok()?),
+            None => ("127.0.0.1".to_string(), target.parse().ok()?),
+        };
+        let mut path = path.trim().to_string();
+        if !path.starts_with('/') {
+            path.insert(0, '/');
+        }
+        if !path.ends_with('/') {
+            path.push('/');
+        }
+        Some(Route { path, host, port })
+    }
+}
+
+impl std::fmt::Display for Route {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.host == "127.0.0.1" { write!(f, "{}={}", self.path, self.port) } else { write!(f, "{}={}:{}", self.path, self.host, self.port) }
+    }
+}
+
+/// Per-site directory for snippets and the password file:
+/// `<nginx dir>/ngx.d/<domain>/`.
+pub fn site_dir(domain: &str) -> PathBuf {
+    Env::get().nginx_dir.join("ngx.d").join(domain)
+}
+
+pub fn htpasswd_path(domain: &str) -> PathBuf {
+    site_dir(domain).join("htpasswd")
+}
+
+fn zone_name(domain: &str) -> String {
+    format!("ngx_{}", domain.replace('*', "wildcard"))
+}
+
+fn rate_burst(rate: &str) -> u32 {
+    rate.split('r').next().and_then(|n| n.parse::<u32>().ok()).map(|n| (n * 2).max(10)).unwrap_or(10)
 }
 
 fn yes() -> bool {
@@ -61,8 +161,8 @@ impl Spec {
     pub fn cert_paths(&self) -> Option<(String, String)> {
         match &self.ssl {
             Ssl::None => None,
-            Ssl::LetsEncrypt => {
-                let live = Env::get().le_dir.join("live").join(&self.domain);
+            Ssl::LetsEncrypt | Ssl::LetsEncryptDns { .. } => {
+                let live = Env::get().le_dir.join("live").join(cert_name(&self.domain));
                 Some((
                     live.join("fullchain.pem").display().to_string(),
                     live.join("privkey.pem").display().to_string(),
@@ -84,18 +184,56 @@ impl Spec {
     }
 }
 
-fn body(spec: &Spec, out: &mut String) {
+fn proxy_headers(out: &mut String, indent: &str) {
+    for h in ["Host $host", "X-Real-IP $remote_addr", "X-Forwarded-For $proxy_add_x_forwarded_for", "X-Forwarded-Proto $scheme"] {
+        out.push_str(&format!("{indent}proxy_set_header {h};\n"));
+    }
+}
+
+/// The server body shared by the HTTP and HTTPS blocks. `tls`: inside the
+/// HTTPS block; `port`: the block's public port.
+fn body(spec: &Spec, out: &mut String, tls: bool, port: u16) {
+    let o = &spec.opts;
+    if tls && o.hsts {
+        out.push_str("    add_header Strict-Transport-Security \"max-age=31536000\" always;\n\n");
+    }
+    if o.canonical && !spec.aliases.is_empty() {
+        let scheme = if tls { "https" } else { "http" };
+        let default = if tls { 443 } else { 80 };
+        let p = if port == default { String::new() } else { format!(":{port}") };
+        out.push_str(&format!("    # aliases redirect to the main domain\n    if ($host != {}) {{\n        return 301 {scheme}://{}{p}$request_uri;\n    }}\n\n", spec.domain, spec.domain));
+    }
     let (access, error) = spec.log_paths();
     out.push_str(&format!("    access_log {} ngx;\n    error_log  {};\n\n", access.display(), error.display()));
+    let mut extra = false;
+    if let Some(b) = &o.max_body {
+        out.push_str(&format!("    client_max_body_size {b};\n"));
+        extra = true;
+    }
+    if let Some(r) = &o.rate_limit {
+        out.push_str(&format!("    limit_req zone={} burst={} nodelay;\n    limit_req_status 429;\n", zone_name(&spec.domain), rate_burst(r)));
+        extra = true;
+    }
+    if o.auth {
+        out.push_str(&format!("    auth_basic \"Restricted\";\n    auth_basic_user_file {};\n", htpasswd_path(&spec.domain).display()));
+        extra = true;
+    }
+    if extra {
+        out.push('\n');
+    }
+    out.push_str(&format!("    # your own directives: {}/*.conf (kept when ngx regenerates this file)\n", site_dir(&spec.domain).display()));
+    out.push_str(&format!("    include {}/*.conf;\n\n", site_dir(&spec.domain).display()));
+    for r in &o.routes {
+        out.push_str(&format!("    location ^~ {} {{\n        proxy_pass http://{}:{};\n        proxy_http_version 1.1;\n", r.path, r.host, r.port));
+        proxy_headers(out, "        ");
+        out.push_str("        proxy_set_header Connection \"\";\n    }\n\n");
+    }
     match &spec.backend {
         Backend::Proxy { host, port, websocket } => {
             out.push_str("    location / {\n");
             out.push_str(&format!("        proxy_pass http://{host}:{port};\n"));
             out.push_str("        proxy_http_version 1.1;\n");
-            out.push_str("        proxy_set_header Host $host;\n");
-            out.push_str("        proxy_set_header X-Real-IP $remote_addr;\n");
-            out.push_str("        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n");
-            out.push_str("        proxy_set_header X-Forwarded-Proto $scheme;\n");
+            proxy_headers(out, "        ");
             if *websocket {
                 out.push_str("        proxy_set_header Upgrade $http_upgrade;\n");
                 out.push_str("        proxy_set_header Connection \"upgrade\";\n");
@@ -133,7 +271,7 @@ fn deny_hidden(out: &mut String) {
 
 fn acme(out: &mut String) {
     out.push_str(&format!(
-        "    location ^~ /.well-known/acme-challenge/ {{\n        root {};\n        default_type text/plain;\n    }}\n\n",
+        "    location ^~ /.well-known/acme-challenge/ {{\n        root {};\n        default_type text/plain;\n        auth_basic off;\n    }}\n\n",
         Env::get().acme_webroot.display()
     ));
 }
@@ -146,6 +284,9 @@ pub fn render(spec: &Spec, bootstrap: bool) -> String {
     o.push_str(SPEC_PREFIX);
     o.push_str(&serde_json::to_string(spec).unwrap_or_default());
     o.push_str("\n\n");
+    if let Some(r) = &spec.opts.rate_limit {
+        o.push_str(&format!("limit_req_zone $binary_remote_addr zone={}:10m rate={r};\n\n", zone_name(&spec.domain)));
+    }
     let names = spec.names();
     let certs = if bootstrap { None } else { spec.cert_paths() };
 
@@ -154,7 +295,7 @@ pub fn render(spec: &Spec, bootstrap: bool) -> String {
             let port = if spec.cert_paths().is_some() { 80 } else { spec.inbound };
             o.push_str(&format!("server {{\n    listen {port};\n    listen [::]:{port};\n    server_name {names};\n\n"));
             acme(&mut o);
-            body(spec, &mut o);
+            body(spec, &mut o, false, port);
             o.push_str("}\n");
         }
         Some((cert, key)) => {
@@ -163,17 +304,18 @@ pub fn render(spec: &Spec, bootstrap: bool) -> String {
                 o.push_str(&format!("server {{\n    listen 80;\n    listen [::]:80;\n    server_name {names};\n\n"));
                 acme(&mut o);
                 if spec.redirect_http {
-                    let target = if port == 443 { "https://$host$request_uri".to_string() } else { format!("https://$host:{port}$request_uri") };
+                    let host = if spec.opts.canonical { spec.domain.as_str() } else { "$host" };
+                    let target = if port == 443 { format!("https://{host}$request_uri") } else { format!("https://{host}:{port}$request_uri") };
                     o.push_str(&format!("    location / {{\n        return 301 {target};\n    }}\n"));
                 } else {
-                    body(spec, &mut o);
+                    body(spec, &mut o, false, 80);
                 }
                 o.push_str("}\n\n");
             }
             o.push_str(&format!("server {{\n    listen {port} ssl;\n    listen [::]:{port} ssl;\n    server_name {names};\n\n"));
             o.push_str(&format!("    ssl_certificate     {cert};\n    ssl_certificate_key {key};\n"));
             o.push_str("    ssl_protocols TLSv1.2 TLSv1.3;\n    ssl_session_cache shared:ngx_ssl:10m;\n    ssl_session_timeout 1d;\n\n");
-            body(spec, &mut o);
+            body(spec, &mut o, true, port);
             o.push_str("}\n");
         }
     }
@@ -195,6 +337,7 @@ mod tests {
             redirect_http: true,
             access_log: None,
             error_log: None,
+            opts: Options::default(),
         }
     }
 

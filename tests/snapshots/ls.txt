@@ -1,0 +1,10 @@
+
+ID  STATUS  DOMAIN               SSL   RENEW  IN    LOCAL       CONFIG                      ERROR
+1   ● up    app.example.com      none  —      80    3000        sites-enabled/app.conf      —
+2   ● up    blog.example.com     none  —      80    php8.3-fpm  sites-enabled/blog.conf     —
+3   ● up    docs.example.com     none  —      8080  files       sites-enabled/docs.conf     —
+4   ○ down  staging.example.com  none  —      80    4000        sites-enabled/staging.conf  502 Bad Gateway: upstream 127.0.0.1:4000 refused connection
+5   ○ down  old.example.com      none  —      80    5000        sites-enabled/old.conf      config error: duplicate server_name www.app.example.com (line 3)
+
+5 domains · 3 up · 2 down
+1 disabled site hidden (ngx ls --all)

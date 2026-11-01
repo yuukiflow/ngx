@@ -1,0 +1,36 @@
+[package]
+name = "ngx-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+serde_json = "1"
+ngx = { path = ".." }
+
+[[bin]]
+name = "parser"
+path = "fuzz_targets/parser.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "spec"
+path = "fuzz_targets/spec.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "logs"
+path = "fuzz_targets/logs.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

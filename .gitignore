@@ -19,3 +19,9 @@ CLAUDE.local.md
 *.swp
 *~
 .DS_Store
+
+# Fuzzing (seeds are in fuzz/seeds)
+/fuzz/target
+/fuzz/corpus
+/fuzz/artifacts
+/fuzz/coverage

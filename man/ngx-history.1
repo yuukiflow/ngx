@@ -1,0 +1,27 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH ngx-history 1  "ngx-history " 
+.SH NAME
+ngx\-history \- List recorded changes (newest first), optionally only those touching one site
+.SH SYNOPSIS
+\fBngx\-history\fR [\fB\-n\fR|\fB\-\-limit\fR] [\fB\-\-json\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fISITE\fR] 
+.SH DESCRIPTION
+List recorded changes (newest first), optionally only those touching one site
+.SH OPTIONS
+.TP
+\fB\-n\fR, \fB\-\-limit\fR \fI<LIMIT>\fR [default: 20]
+Show at most this many entries
+.TP
+\fB\-\-json\fR
+Print JSON
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+[\fISITE\fR]
+Site ID or domain
+.SH EXTRA
+Examples:
+  ngx history
+  ngx history 4
+  ngx history \-\-json

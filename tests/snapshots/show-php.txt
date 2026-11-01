@@ -1,0 +1,17 @@
+
+blog.example.com                                                      ● UP
+──────────────────────────────────────────────────────────────────────────
+ID              2
+Config          /etc/nginx/sites-enabled/blog.conf  (modified 01/01/26 12:00)
+
+ROUTING
+  Inbound       :80 (HTTP)
+  Type          FastCGI
+  Upstream      unix:/run/php/php8.3-fpm.sock
+
+BACKEND
+  Process       running  ·  no process details in sandbox
+  Document root /var/www/blog
+
+LOCATIONS
+  ~ \.php$      → fastcgi php8.3-fpm.sock

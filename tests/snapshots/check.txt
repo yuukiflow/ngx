@@ -1,0 +1,2 @@
+CRIT #4 staging.example.com: down: 502 Bad Gateway: upstream 127.0.0.1:4000 refused connection
+CRIT #5 old.example.com: down: config error: duplicate server_name www.app.example.com (line 3)

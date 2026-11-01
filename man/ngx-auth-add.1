@@ -1,0 +1,26 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH ngx-auth-add 1  "ngx-auth-add " 
+.SH NAME
+ngx\-auth\-add \- Add a user, or change their password (asked twice, or read from stdin with \-\-password\-stdin)
+.SH SYNOPSIS
+\fBngx\-auth\-add\fR [\fB\-\-password\-stdin\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fISITE\fR> <\fIUSER\fR> 
+.SH DESCRIPTION
+Add a user, or change their password (asked twice, or read from stdin with \-\-password\-stdin)
+.SH OPTIONS
+.TP
+\fB\-\-password\-stdin\fR
+Read the password from the first line of stdin
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fISITE\fR>
+Site ID or domain
+.TP
+<\fIUSER\fR>
+
+.SH EXTRA
+Examples:
+  sudo ngx auth add 4 alice
+  echo "$PASS" | sudo ngx auth add 4 ci \-\-password\-stdin

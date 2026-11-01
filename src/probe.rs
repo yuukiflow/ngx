@@ -78,11 +78,10 @@ fn listening_inodes(port: u16) -> HashSet<u64> {
                 continue;
             }
             let p = c[1].rsplit(':').next().and_then(|h| u16::from_str_radix(h, 16).ok());
-            if p == Some(port) {
-                if let Ok(i) = c[9].parse() {
+            if p == Some(port)
+                && let Ok(i) = c[9].parse() {
                     out.insert(i);
                 }
-            }
         }
     }
     out
@@ -93,11 +92,10 @@ fn unix_inodes(path: &Path) -> HashSet<u64> {
     if let Ok(s) = std::fs::read_to_string("/proc/net/unix") {
         for l in s.lines().skip(1) {
             let c: Vec<&str> = l.split_whitespace().collect();
-            if c.len() >= 8 && Path::new(c[7]) == path {
-                if let Ok(i) = c[6].parse() {
+            if c.len() >= 8 && Path::new(c[7]) == path
+                && let Ok(i) = c[6].parse() {
                     out.insert(i);
                 }
-            }
         }
     }
     out
@@ -259,11 +257,10 @@ fn version_output(pid: u32, args: &[&str]) -> Option<String> {
             if libc::setsid() < 0 {
                 return Err(std::io::Error::last_os_error());
             }
-            if let Some((uid, gid)) = drop_to {
-                if libc::setgroups(0, std::ptr::null()) != 0 || libc::setgid(gid) != 0 || libc::setuid(uid) != 0 {
+            if let Some((uid, gid)) = drop_to
+                && (libc::setgroups(0, std::ptr::null()) != 0 || libc::setgid(gid) != 0 || libc::setuid(uid) != 0) {
                     return Err(std::io::Error::last_os_error());
                 }
-            }
             Ok(())
         });
     }
@@ -338,11 +335,10 @@ pub fn proc_info(pid: u32) -> ProcInfo {
         for p in pids() {
             if stat(p).is_some_and(|(pp, _)| pp == pid) {
                 n += 1;
-                if let Some(pool) = cmdline(p).first().and_then(|c| c.strip_prefix("php-fpm: pool ").map(|s| s.trim().to_string())) {
-                    if !pools.contains(&pool) {
+                if let Some(pool) = cmdline(p).first().and_then(|c| c.strip_prefix("php-fpm: pool ").map(|s| s.trim().to_string()))
+                    && !pools.contains(&pool) {
                         pools.push(pool);
                     }
-                }
             }
         }
         let pools = pools.iter().map(|p| format!("\"{p}\"")).collect::<Vec<_>>().join(", ");
@@ -366,8 +362,8 @@ pub fn stopped_backend(u: &Upstream, roots: &[&Path]) -> Stopped {
         return Stopped { detail: "not running".into(), ..Default::default() };
     }
     // pm2 apps matched by PORT env or working directory
-    if env::which("pm2").is_some() {
-        if let Some((true, out)) = env::run("pm2", &["jlist"]) {
+    if env::which("pm2").is_some()
+        && let Some((true, out)) = env::run("pm2", &["jlist"]) {
             let json = out.find('[').map(|i| &out[i..]).unwrap_or("[]");
             if let Ok(serde_json::Value::Array(apps)) = serde_json::from_str::<serde_json::Value>(json) {
                 for app in apps {
@@ -391,10 +387,9 @@ pub fn stopped_backend(u: &Upstream, roots: &[&Path]) -> Stopped {
                 }
             }
         }
-    }
     // php-fpm style sockets: guess the systemd unit from the socket name
-    if let Upstream::Unix(p) = u {
-        if let Some(stem) = p.file_stem().map(|s| s.to_string_lossy().into_owned()) {
+    if let Upstream::Unix(p) = u
+        && let Some(stem) = p.file_stem().map(|s| s.to_string_lossy().into_owned()) {
             let unit = format!("{stem}.service");
             if let Some((_, out)) = env::run("systemctl", &["show", &unit, "-p", "LoadState,ActiveState,SubState,ExecMainStatus,ExecMainExitTimestamp"]) {
                 let get = |k: &str| out.lines().find_map(|l| l.strip_prefix(&format!("{k}="))).unwrap_or("").to_string();
@@ -409,7 +404,6 @@ pub fn stopped_backend(u: &Upstream, roots: &[&Path]) -> Stopped {
                 }
             }
         }
-    }
     let what = match u {
         Upstream::Tcp { port, .. } => format!("nothing listening on :{port}"),
         Upstream::Unix(p) => format!("no socket at {}", p.display()),

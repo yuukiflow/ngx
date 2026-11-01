@@ -70,8 +70,8 @@ pub fn evaluate(sites: Vec<Site>, run_nginx_test: bool) -> Report {
         errors.entry(i).or_insert(e);
     }
     // nginx -t needs root to open certs/logs; only trust it then.
-    if run_nginx_test && (env::is_root() || env.sandboxed()) {
-        if let Some(t) = ctl::test() {
+    if run_nginx_test && (env::is_root() || env.sandboxed())
+        && let Some(t) = ctl::test() {
             for m in t.msgs.iter().filter(|m| m.level != "warn") {
                 let hit = m.file.as_ref().and_then(|f| {
                     sites.iter().enumerate().filter(|(_, s)| same_file(f, s)).min_by_key(|(_, s)| {
@@ -92,7 +92,6 @@ pub fn evaluate(sites: Vec<Site>, run_nginx_test: bool) -> Report {
                 global.push(t.raw.clone());
             }
         }
-    }
     let nginx_up = ctl::running();
 
     let status: Vec<Status> = std::thread::scope(|scope| {

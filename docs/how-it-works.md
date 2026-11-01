@@ -87,6 +87,24 @@ A generated config contains:
 Every value in a generated config is validated first, so nothing typed into a prompt or flag can add directives;
 see [Security](security.md).
 
+With options, the config also gets `client_max_body_size`, an HSTS header (HTTPS block only), `auth_basic` with the
+site's password file, `limit_req` (with a `limit_req_zone` per site at the top of the file, answering `429`), an
+`if ($host != <domain>) { return 301 … }` alias redirect, and `location ^~ /<path>/` blocks for extra routes (`^~`, so
+no regex location such as PHP's can take those paths over). The ACME challenge location always has `auth_basic off`,
+so password protection never blocks certificate renewal.
+
+### Your own directives (snippets)
+
+Each generated server block ends its settings with
+
+```nginx
+include /etc/nginx/ngx.d/<domain>/*.conf;
+```
+
+Files you put there (with `ngx edit <site> --snippet <name>`, which validates them) belong to you: ngx never
+regenerates them, moves them when the domain is renamed, and removes them (into the backups) with `ngx rm`. The same
+directory holds the site's `htpasswd` (not included, since it doesn't end in `.conf`).
+
 The `ngx` log format (in `sites-enabled/00-ngx-logformat.conf`) is the standard "combined" format plus
 `rt=$request_time`, so `ngx show` can report latency.
 
@@ -94,7 +112,12 @@ The `ngx` log format (in `sites-enabled/00-ngx-logformat.conf`) is the standard 
 
 Every change is one transaction:
 
-1. **Back up** each file about to change to `/var/lib/ngx/backups/<YYYYmmdd-HHMMSS>/` (root-only, `0700`).
+0. **Lock**: take an exclusive lock on `/var/lib/ngx/lock`, so two ngx processes (the dashboard and a command in
+   another terminal, or two admins) never interleave their changes. The second one prints
+   `waiting for another ngx command to finish…` and continues when the first is done.
+1. **Back up** each file about to change to `/var/lib/ngx/backups/<YYYYmmdd-HHMMSS>/` (root-only, `0700`), and record
+   in that directory's `manifest.json` what each path was before: a file (with its mode), a link (with its target), or
+   nothing (so undo knows to remove it).
 2. **Write** the new files. Each file is written to an exclusively created temporary name and then renamed over the
    old one, so nginx never sees a half-written file. Existing files keep their permissions.
 3. **Test** with `nginx -t -c <nginx.conf>`, on the configuration ngx manages.
@@ -107,9 +130,14 @@ Every change is one transaction:
 
 ### Backups
 
-Backup files are named after their full path, with `/` replaced by `%`:
+One backup directory is one entry of [`ngx history`](commands.md#ngx-history): all the transactions of a command share
+it (several commands in the same second get `-2`, `-3`… suffixes). A transaction that was rolled back leaves nothing
+behind. The last 50 entries are kept; older ones are deleted after each change.
+
+`ngx undo <ID>` restores an entry. Backup files are named after their full path, with `/` replaced by `%`:
 
 ```
+/var/lib/ngx/backups/20261031-204512/manifest.json
 /var/lib/ngx/backups/20261031-204512/etc%nginx%sites-available%api.conf
 ```
 
@@ -120,7 +148,7 @@ sudo cp '/var/lib/ngx/backups/20261031-204512/etc%nginx%sites-available%api.conf
 sudo ngx reload
 ```
 
-Backups are never deleted automatically.
+Backups made before ngx kept a manifest still appear in `ngx history` (as changed files) and can be undone.
 
 ## Files ngx touches
 
@@ -132,9 +160,11 @@ Backups are never deleted automatically.
 | `/etc/nginx/conf.d/<domain>.conf` | Site configs, if you declined the `sites-enabled` layout |
 | `/etc/nginx/nginx.conf` | Only `ngx init`: one `include` line at the end of `http { }` |
 | `/var/lib/ngx/state.json` | Site IDs |
-| `/var/lib/ngx/backups/` | Backups |
+| `/var/lib/ngx/backups/` | Backups and change history (`manifest.json` in each entry) |
+| `/var/lib/ngx/lock` | Lock held while a change is made |
+| `/etc/nginx/ngx.d/<domain>/` | Your snippets (`*.conf`), the password file, a README |
 | `/var/lib/ngx/acme/` | ACME challenge webroot |
-| `/etc/letsencrypt/renewal/<name>.conf` | Only `ngx cert auto` (the `autorenew` line) |
+| `/etc/letsencrypt/renewal/<name>.conf` | Only `ngx cert auto` (the `autorenew` line, and `renew_hook` if missing) |
 | `/var/www/<domain>/` | Document root for new static/PHP sites, if it doesn't exist (static sites get a placeholder `index.html`) |
 
 Everything else in `/etc/letsencrypt` is handled by certbot.

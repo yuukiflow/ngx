@@ -14,11 +14,10 @@ fn read_tail(path: &Path, max: u64) -> Option<String> {
     let mut buf = Vec::new();
     f.read_to_end(&mut buf).ok()?;
     let mut s = String::from_utf8_lossy(&buf).into_owned();
-    if len > max {
-        if let Some(i) = s.find('\n') {
+    if len > max
+        && let Some(i) = s.find('\n') {
             s.drain(..=i);
         }
-    }
     Some(s)
 }
 

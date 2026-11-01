@@ -1,15 +1,17 @@
 # Command reference
 
-Commands that change anything (`add`, `edit`, `rm`, `enable`, `disable`, `cert issue|renew|auto`, `reload`, `init`) need
-root. Read-only commands (`ls`, `show`, `logs`, `test`, `doctor`, the dashboard) work as a normal user, with some
-details hidden (see [Running without root](troubleshooting.md#running-without-root)).
+Commands that change anything (`add`, `edit`, `rm`, `enable`, `disable`, `cert issue|renew|auto`, `auth add|rm`,
+`undo`, `reload`, `init`) need root. Read-only commands (`ls`, `show`, `logs`, `check`, `history`, `test`, `doctor`,
+the dashboard) work as a normal user, with some details hidden (see [Running without root](troubleshooting.md#running-without-root)).
 
 Wherever a command takes `<site>`, you can pass the site's **ID** (the first column of `ngx ls`) or **any of its
 domain names**, including aliases: `ngx show 4`, `ngx show staging.example.com`, `ngx show www.staging.example.com`.
 
 Every command that changes files goes through the same [safe change procedure](how-it-works.md#safe-changes):
 backup → write → `nginx -t` → roll back on failure → reload and wait until nginx is serving the new config.
-Commands with `--dry-run` print what they would do and change nothing.
+Each command is recorded in the [change history](#ngx-history), so it can be [undone](#ngx-undo). Only one ngx
+command changes things at a time: a second one waits for the first to finish. Commands with `--dry-run` print what
+they would do and change nothing.
 
 Dates are shown as `dd/mm/yy`.
 
@@ -21,6 +23,10 @@ Dates are shown as `dd/mm/yy`.
 - [ngx rm](#ngx-rm)
 - [ngx enable / disable](#ngx-enable--ngx-disable)
 - [ngx cert](#ngx-cert)
+- [ngx auth](#ngx-auth)
+- [ngx check](#ngx-check)
+- [ngx history](#ngx-history)
+- [ngx undo](#ngx-undo)
 - [ngx logs](#ngx-logs)
 - [ngx test](#ngx-test)
 - [ngx reload](#ngx-reload)
@@ -57,8 +63,8 @@ ID  STATUS  DOMAIN               SSL                     RENEW   IN   LOCAL     
 | `ID` | Stable site number. It never changes and is never reused (see [IDs](how-it-works.md#site-ids)). |
 | `STATUS` | `● up`, `○ down` or `◌ off` (disabled). See [how status is decided](how-it-works.md#how-status-is-decided). |
 | `DOMAIN` | The first `server_name`. Other names are aliases (visible in `ngx show`). |
-| `SSL` | `valid until <date>`, `valid until <date> ⚠` (less than 30 days left), `expired <date>`, `none`, `missing` (the configured certificate file doesn't exist) or `unreadable` (usually: not root). |
-| `RENEW` | `auto`, `manual` or `—` (no certificate). See [renewal](ssl.md#auto-or-manual). |
+| `SSL` | `valid until <date>`, `valid until <date> ⚠` (renewal is late: less than a third of the certificate's lifetime left, at most 30 days), `expired <date>`, `none`, `missing` (the configured certificate file doesn't exist) or `unreadable` (usually: not root). |
+| `RENEW` | `auto`, `auto ⚠` (renews, but nginx isn't reloaded afterwards, so it would keep serving the old certificate), `manual` or `—` (no certificate). See [renewal](ssl.md#auto-or-manual). |
 | `IN` | Public port: the SSL port if there is one, otherwise the first `listen` port. |
 | `LOCAL` | Where requests go: upstream port, unix socket name (`php8.3-fpm`), `files` for static sites, `→` for pure redirects. |
 | `CONFIG` | Config file, relative to the nginx directory. |
@@ -72,7 +78,7 @@ Options:
 - `-a, --all`: include disabled sites (hidden by default, with a note saying how many).
 - `--json`: print a JSON array instead of the table. Fields: `id`, `domain`, `aliases`, `status` (`up`/`down`/`disabled`), `error`,
   `enabled`, `managed`, `config`, `file`, `kind`, `inbound`, `upstream`, `root`,
-  `ssl.{certificate,expires,issuer,names,expired,expiring_soon,renewal}`, `locations[].{match,action}`.
+  `ssl.{certificate,expires,issuer,names,expired,expiring_soon,renewal,reload_after_renewal}`, `locations[].{match,action}`.
 
 ```
 ngx ls --json | jq -r '.[] | select(.status == "down") | "\(.id) \(.domain): \(.error)"'
@@ -94,7 +100,7 @@ Everything about one site. Sections only appear when they apply.
 | `ID`, `Aliases`, `Config` | Config path with modification time, plus `disabled` / `managed by ngx` notes. |
 | `Problem` | Only when the site is down: the same message as the `ERROR` column. |
 | `SSL` | Status and days left, issuer (`Let's Encrypt (R11)`), renewal (`auto · certbot timer, next check …` or `manual · <reason>`), `Covers` (names on the certificate, when different from the domain), and `Not covered` (site names the certificate does **not** cover; browsers will show an error for these). |
-| `ROUTING` | Inbound ports (`:443 (HTTPS) · :80 → redirect to HTTPS`), type (reverse proxy / FastCGI / static files / redirect), and upstream, root or redirect target. |
+| `ROUTING` | Inbound ports (`:443 (HTTPS) · :80 → redirect to HTTPS`), type (reverse proxy / FastCGI / static files / redirect), and upstream, root or redirect target. For sites created by ngx: `Settings` (upload size, HSTS, password protection with the number of users, rate limit, alias redirect) and `Snippets` (your own `ngx.d/<domain>/*.conf` files). |
 | `BACKEND` | For proxy and PHP sites: the process behind the upstream. Runtime (Node.js, PHP-FPM, Python + gunicorn/uvicorn/…, Bun, Deno, Java, otherwise the executable name), who manages it (systemd unit, pm2 app, Docker container, supervisord), process state with pid and uptime (and pool and worker count for php-fpm), and working directory or document root. When nothing is listening, ngx looks for the pm2 app (matched by `PORT` or working directory) or the systemd unit (guessed from the socket name) and shows its state and last exit. |
 | `LOCATIONS` | Each `location` and what it does (`proxy …`, `fastcgi …`, `files …`, `try_files …`, `return …`). WebSocket upgrades are marked. |
 | `LOGS` | The site's own access and error log, when it has them. |
@@ -122,9 +128,25 @@ Creates a site, enables it and reloads nginx. Asks for anything you don't pass a
    - *static files*: serves a directory. Then asks **Document root** (default `/var/www/<domain>`).
    - *PHP (php-fpm)*: asks **Document root** and **php-fpm socket**. If exactly one socket exists in
      `/run/php`, `/run/php-fpm` or `/var/run/php`, it's used automatically. With several, you pick one.
-4. **SSL**: *Let's Encrypt (certbot)*, *existing certificate* (asks for the certificate and key paths) or *none*.
-5. **Email**: only for Let's Encrypt when certbot has no account on this machine yet. Optional.
+4. **SSL**:
+   - *Let's Encrypt (HTTP challenge)*: the usual choice; the domain must point here and port 80 be reachable.
+   - *Let's Encrypt with DNS challenge*: for wildcard names (`*.example.com`) or servers not reachable on port 80.
+     Asks for the **certbot DNS plugin** (`cloudflare`, `route53`, `digitalocean`, `ovh`…, the
+     `certbot-dns-<plugin>` package must be installed) and its **credentials file**.
+   - *existing certificate*: asks for the certificate and key paths.
+   - *none*.
+5. **Email**: only for Let's Encrypt when certbot has no account on this machine yet. Optional. Let's Encrypt no
+   longer emails about expiring certificates; use [`ngx check`](#ngx-check) for that.
 6. **Inbound (public) port**: default 443 with SSL, 80 without.
+7. **Options**: a checklist (space toggles, Enter confirms). Each one you tick asks for its value:
+   - *Max upload size*: `client_max_body_size` (nginx's default is 1m, too small for most upload forms).
+   - *HSTS*: `Strict-Transport-Security: max-age=31536000`. Browsers will then refuse plain HTTP for this domain for a
+     year, so turn it on once HTTPS works.
+   - *Password protection*: basic auth; ngx asks for the first user and password (see [`ngx auth`](#ngx-auth)).
+   - *Rate limit per client*: e.g. `10r/s`; short bursts (twice the rate, at least 10) are allowed, beyond that
+     clients get `429 Too Many Requests`.
+   - *Redirect aliases to the main domain*: `www.example.com/x` → `example.com/x` (301).
+   - *Extra paths proxied to other apps*: e.g. `/api=8080` sends `/api/…` to `127.0.0.1:8080`.
 
 Then ngx prints the generated config and asks **Create and enable this site?**
 
@@ -137,8 +159,14 @@ That server also answers Let's Encrypt challenges, so renewals keep working.
 2. It runs `certbot certonly --webroot -w /var/lib/ngx/acme --cert-name <domain> -d <domain> -d <alias>…`.
 3. It switches the site to the final HTTPS config and reloads again.
 
+certbot records a deploy hook (`systemctl reload nginx`) in the certificate's renewal config, so nginx serves each
+renewed certificate.
+
 If certbot fails (DNS not pointing here, port 80 blocked, rate limits…), the site stays on HTTP, and ngx tells you
 to run `ngx cert issue <site>` once the problem is fixed. See [ssl.md](ssl.md).
+
+With the **DNS challenge**, nothing needs to be served first: ngx runs `certbot certonly --authenticator dns-<plugin>`,
+then writes the HTTPS config. If certbot fails, nothing is written.
 
 ### Flags
 
@@ -151,12 +179,19 @@ to run `ngx cert issue <site>` once the problem is fixed. See [ssl.md](ssl.md).
 | `--root <DIR>` | Document root (static and php). Created if missing; static sites get a placeholder `index.html`. |
 | `--socket <PATH>` | php-fpm socket. |
 | `-i, --in <PORT>` | Public port. |
-| `--ssl <MODE>` | `letsencrypt` (aliases: `le`, `certbot`), `existing` or `none`. |
+| `--ssl <MODE>` | `letsencrypt` (aliases: `le`, `certbot`), `dns`, `existing` or `none`. |
+| `--dns <PLUGIN>`, `--dns-credentials <FILE>` | Let's Encrypt with the DNS challenge through `certbot-dns-<PLUGIN>`. Implies `--ssl dns`. |
 | `--cert <PATH>`, `--key <PATH>` | Certificate and key for `--ssl existing`. Passing `--cert` implies `--ssl existing`. |
 | `--email <EMAIL>` | Let's Encrypt account email. |
 | `--websocket` | Proxy WebSocket upgrades (also sets a 1-hour read timeout). |
 | `--no-redirect` | Don't redirect port 80 to HTTPS; serve the site on both. |
 | `--staging` | Use the Let's Encrypt staging server (certificates are not trusted by browsers; good for testing). |
+| `--max-body <SIZE>` | Max upload size, e.g. `50m`; `off` for nginx's default. |
+| `--hsts on\|off` | HSTS (HTTPS sites only). |
+| `--auth on\|off` | Password protection (users: [`ngx auth`](#ngx-auth)). |
+| `--rate-limit <RATE>` | Requests per client, e.g. `10r/s` or `300r/m`; `off` to remove. |
+| `--canonical on\|off` | Redirect the aliases to the main domain. |
+| `--route <PATH=PORT>` | Proxy a path to another app: `/api=8080`, `/ws=10.0.0.5:9000`. Repeat for more; `--route off` removes them. |
 | `-y, --yes` | No questions. Missing values use defaults: proxy, Let's Encrypt, port 443. `--domain` is required, plus `--local` for proxy sites. |
 | `--dry-run` | Print the config and the files that would be written. Doesn't need root. |
 
@@ -169,6 +204,8 @@ sudo ngx add -y -d app.example.com -l 3000 --websocket --email me@example.com
 sudo ngx add -y -d docs.example.com --root /var/www/docs --ssl none
 sudo ngx add -y -d blog.example.com -t php --root /var/www/blog
 sudo ngx add -y -d api.internal -l 10.0.0.5:8080 --ssl existing --cert /etc/ssl/api.pem --key /etc/ssl/api.key
+sudo ngx add -y -d '*.example.com' -l 3000 --dns cloudflare --dns-credentials /root/.secrets/cloudflare.ini
+sudo ngx add -y -d shop.example.com -a www.shop.example.com -l 3000 --canonical on --max-body 50m --route /api=8080
 ngx add -y -d app.example.com -l 3000 --dry-run                  # preview only
 ```
 
@@ -176,6 +213,7 @@ ngx add -y -d app.example.com -l 3000 --dry-run                  # preview only
 
 - `/etc/nginx/sites-available/<domain>.conf` and a link in `sites-enabled/`.
 - `00-ngx-logformat.conf` (once): defines the `ngx` log format with request timing.
+- `/etc/nginx/ngx.d/<domain>/`: the site's own directory, for your [snippets](#--snippet) and the password file.
 - `/var/log/nginx/<domain>.access.log` and `.error.log` (created by nginx).
 
 If nginx doesn't use `sites-enabled/` yet, ngx offers to set it up first (see [`ngx init`](#ngx-init)). If you decline,
@@ -230,8 +268,29 @@ Details:
 - **Renaming** the domain renames `<domain>.conf` and its `sites-enabled` link. The site keeps its ID. A disabled site stays disabled.
 - **Switching to Let's Encrypt** without an existing certificate follows the same steps as `add`: HTTP first, then certbot, then HTTPS.
 - **Adding names to a Let's Encrypt site**: the new config is applied first (it answers challenges for the new names), then certbot extends the certificate (`--expand`) and nginx is reloaded.
-- **Sites you wrote yourself** can be edited too, if they are a plain proxy, static or PHP site. ngx reads their current settings and warns that saving **replaces the file with a generated config**. The original is in the [backup](how-it-works.md#backups), and access/error log paths are kept. Custom directives (extra headers, rate limits, extra locations…) are not carried over, so check the diff.
+- **Options** (upload size, HSTS, password, rate limit, alias redirect, extra paths) come back pre-ticked in the checklist. Flags change them directly: `--max-body off`, `--route off`, `--auth on`…
+- **Sites you wrote yourself** can be edited too, if they are a plain proxy, static or PHP site. ngx reads their current settings and warns that saving **replaces the file with a generated config**. The original is in the [backup](how-it-works.md#backups), and access/error log paths are kept. Custom directives (extra headers, rate limits, extra locations…) are not carried over, so check the diff, and move them into a [snippet](#--snippet).
 - ngx refuses files that define **several sites**, and setups it can't generate (variable upstreams, redirect-only sites, upstreams that aren't TCP or a unix socket). Use `--raw` for those.
+
+### --snippet
+
+```
+ngx edit <site> --snippet <name>
+```
+
+Your own nginx directives for a site created by ngx, in `/etc/nginx/ngx.d/<domain>/<name>.conf`. Every `*.conf` file
+there is included inside the site's server block and **kept when ngx regenerates the config**. That's the way to add
+what the questions don't cover (extra `location` blocks, headers, timeouts) without leaving the managed setup.
+
+The snippet opens in your editor like `--raw`: on save it's checked with `nginx -t` and rolled back (with an offer to
+edit again) if nginx rejects it. Don't add `location /`, since the generated config already has it.
+
+```
+sudo ngx edit 3 --snippet headers      # e.g. add_header X-Frame-Options DENY;
+sudo ngx edit 3 --snippet health       # e.g. location = /health { return 200 "ok\n"; }
+```
+
+Snippets move along when the domain is renamed and are removed (and restorable with `ngx undo`) with `ngx rm`.
 
 ### --raw
 
@@ -249,8 +308,9 @@ ngx rm <site> [--delete-cert] [-y] [--dry-run]
 ```
 
 Asks for confirmation, then removes the site's `sites-enabled` link and its config file, and reloads nginx. The file
-is kept in the [backups](how-it-works.md#backups). If the file defines other sites too, the question says so; they
-are removed together.
+is kept in the [backups](how-it-works.md#backups) and `ngx undo` brings it back. For sites created by ngx, the
+site's `ngx.d/<domain>/` files (snippets, passwords) are removed too. If the file defines other sites too, the
+question says so; they are removed together.
 
 - `--delete-cert`: also delete the site's certbot certificate (`certbot delete --cert-name …`).
 - `-y`: don't ask.
@@ -289,12 +349,14 @@ Prints the site's SSL section from `ngx show`, plus the certificate file path.
 ### ngx cert issue
 
 ```
-ngx cert issue <site> [--email <EMAIL>] [--staging]
+ngx cert issue <site> [--email <EMAIL>] [--staging] [--dns <PLUGIN> [--dns-credentials <FILE>]]
 ```
 
-Gets a Let's Encrypt certificate for the site's domain and aliases:
+Gets a Let's Encrypt certificate for the site's domain and aliases. The certificate's renewal config gets a deploy
+hook that reloads nginx.
 
 - **Sites created by ngx**: `certbot certonly --webroot` via the ACME location the site already has. Then the config is regenerated with HTTPS on 443 and a port 80 redirect (if it was HTTP-only).
+- **With `--dns`** (sites created by ngx): the DNS challenge through `certbot-dns-<PLUGIN>`, needed for wildcard names.
 - **Other sites**: certbot's nginx plugin (`certbot --nginx --redirect`), which edits the config itself. Needs the plugin package (`python3-certbot-nginx` or `certbot-nginx`).
 
 ### ngx cert renew
@@ -312,8 +374,101 @@ expiry; `--force` renews anyway.
 ngx cert auto <site> on|off
 ```
 
-Sets `autorenew = True|False` in the certificate's certbot renewal config. When turning it on, ngx warns if no certbot
+Sets `autorenew = True|False` in the certificate's certbot renewal config. Turning it on also adds a deploy hook that
+reloads nginx after each renewal, if the certificate has none (that's the fix for `auto ⚠`), and warns if no certbot
 timer or cron job exists, since nothing would run the renewal. See [ssl.md](ssl.md#auto-or-manual).
+
+---
+
+## ngx auth
+
+```
+ngx auth list <site>
+ngx auth add <site> <user> [--password-stdin]
+ngx auth rm <site> <user>
+```
+
+Users who can log in to a password-protected site (turned on with `ngx edit <site> --auth on`, or *Password protection*
+in the options). `add` asks for the password twice (at least 8 characters), or reads one line from stdin with
+`--password-stdin`; adding an existing user changes their password.
+
+Passwords are stored as SHA-512 crypt hashes in `/etc/nginx/ngx.d/<domain>/htpasswd`, readable only by root and
+nginx's worker group (`0640`). Changes are recorded in the history like any other.
+
+```
+sudo ngx auth add 4 alice
+echo "$PASSWORD" | sudo ngx auth add 4 deploy-bot --password-stdin
+```
+
+---
+
+## ngx check
+
+```
+ngx check [--json] [-q|--quiet]
+```
+
+Checks every enabled site in one go, for cron jobs and monitoring. Let's Encrypt no longer sends expiry emails, so
+this is what tells you a certificate isn't renewing.
+
+```
+$ ngx check
+WARN #2 api.example.com: certificate expires in 9 days (10/11/26) · renewal is manual (autorenew disabled)
+CRIT #4 staging.example.com: down: 502 Bad Gateway: upstream 127.0.0.1:4000 refused connection
+CRIT #4 staging.example.com: certificate expired 03/10/26
+```
+
+| Level | When |
+|---|---|
+| `CRIT` | a site is down, a certificate expired or its file is missing, `nginx -t` fails |
+| `WARN` | a certificate is expiring (renewal late or manual), doesn't cover all the site's names, or renews without reloading nginx |
+
+Exit status: `0` all good, `1` warnings, `2` critical, `3` ngx itself failed. `--json` prints
+`{status, sites, problems: [{level, site, domain, message}]}`; `-q` prints nothing.
+
+To get an email when something is wrong (needs a working `mail` on the server):
+
+```
+# /etc/cron.d/ngx-check
+MAILTO=you@example.com
+0 8 * * * root ngx check -q || ngx check
+```
+
+It works the same with any monitoring that runs a command and reads the exit status (Nagios, Icinga, Zabbix, a
+systemd timer with `OnFailure=`…).
+
+---
+
+## ngx history
+
+```
+ngx history [<site>] [-n <N>] [--json]
+```
+
+The changes ngx made, newest first: ID, time, user (the one who ran `sudo`), the command, and the files it touched
+(`+` created, `~` changed, `→` link). With a site, only changes touching it. The last 50 changes are kept.
+
+```
+ID                 TIME               USER   COMMAND                        FILES (+ created, ~ changed, → link)
+20261101-093422-2  01/11/26 09:34:22  alice  ngx edit 3 -y --local 4000     ~sites-available/app.conf
+20261101-093422    01/11/26 09:34:22  alice  ngx add -y -d app… -l 3000     +sites-available/app.conf  +sites-enabled/app.conf
+```
+
+All the steps of one command (for example the HTTP bootstrap and the final HTTPS config of `ngx add`) are one entry.
+
+---
+
+## ngx undo
+
+```
+ngx undo [<ID>] [-y] [--dry-run]
+```
+
+Puts every file a change touched back as it was before it: changed files are restored (with a diff shown first),
+created files are removed, links are restored. Without an ID, it undoes the latest change. If later changes touched
+the same files, ngx lists them and warns that they'll be lost.
+
+The undo itself goes through `nginx -t` with rollback, and is recorded, so it can be undone too.
 
 ---
 
@@ -357,6 +512,7 @@ Checks the environment and prints ✓ / ✗ for each item:
 - `nginx -t` passes (root only)
 - certbot installed
 - a renewal scheduler exists (certbot timer or cron)
+- every certbot certificate reloads nginx when renewed (otherwise: `sudo ngx cert auto <site> on`)
 - running as root
 - state directory
 

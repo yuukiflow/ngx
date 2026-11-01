@@ -46,15 +46,13 @@ pub fn parse_output(out: &str) -> Vec<Msg> {
                 _ => text,
             };
             let (mut text, mut file, mut line) = (text.to_string(), None, None);
-            if let Some((t, loc)) = text.clone().rsplit_once(" in ") {
-                if let Some((f, n)) = loc.rsplit_once(':') {
-                    if let Ok(n) = n.parse() {
+            if let Some((t, loc)) = text.clone().rsplit_once(" in ")
+                && let Some((f, n)) = loc.rsplit_once(':')
+                    && let Ok(n) = n.parse() {
                         text = t.to_string();
                         file = Some(PathBuf::from(f));
                         line = Some(n);
                     }
-                }
-            }
             Some(Msg { level: level.to_string(), text, file, line })
         })
         .collect()

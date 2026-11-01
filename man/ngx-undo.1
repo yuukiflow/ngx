@@ -1,0 +1,28 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH ngx-undo 1  "ngx-undo " 
+.SH NAME
+ngx\-undo \- Undo a change: restore every file it touched (default: the latest change)
+.SH SYNOPSIS
+\fBngx\-undo\fR [\fB\-y\fR|\fB\-\-yes\fR] [\fB\-\-dry\-run\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fIID\fR] 
+.SH DESCRIPTION
+Undo a change: restore every file it touched (default: the latest change)
+.SH OPTIONS
+.TP
+\fB\-y\fR, \fB\-\-yes\fR
+Don\*(Aqt ask for confirmation
+.TP
+\fB\-\-dry\-run\fR
+Show what would be restored without changing anything
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+[\fIID\fR]
+Change ID from `ngx history`
+.SH EXTRA
+The undo itself is validated with nginx \-t like any change, and recorded, so it can be undone too.
+
+Examples:
+  sudo ngx undo
+  sudo ngx undo 20261101\-101500

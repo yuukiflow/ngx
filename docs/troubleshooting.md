@@ -74,6 +74,39 @@ at `journalctl -u nginx`. Then run `sudo ngx reload` again.
 All sites show down. Start it: `sudo systemctl start nginx` (and `enable` it to start at boot). If it doesn't start,
 `sudo ngx test` shows why.
 
+## "waiting for another ngx command to finish…"
+
+Another ngx process is making a change (often the dashboard, in another terminal, waiting at a question). ngx
+continues when it's done. To see which one: `sudo fuser -v /var/lib/ngx/lock`.
+
+## `RENEW` says `auto ⚠`
+
+The certificate renews, but nothing reloads nginx afterwards, so nginx would keep serving the old certificate. Fix:
+`sudo ngx cert auto <site> on` (adds a deploy hook to the renewal config). `ngx doctor` lists every certificate in
+that state.
+
+## Uploads fail with 413, or clients get 429
+
+- `413 Request Entity Too Large`: the body is larger than the site's upload limit (nginx's default is 1m). Raise it:
+  `sudo ngx edit <site> -y --max-body 100m`.
+- `429 Too Many Requests`: the site has a rate limit and the client went over it plus the burst allowance. Raise or
+  remove it: `--rate-limit 50r/s` or `--rate-limit off`.
+
+## A snippet is rejected
+
+`ngx edit --snippet` runs `nginx -t` and rolls back on errors. The usual ones:
+
+- `duplicate location "/"`: the generated config already has `location /`; use a more specific path, or change the
+  site's settings with `ngx edit`.
+- `"…" directive is not allowed here`: snippets are inside the `server { }` block; `http`-level directives (like
+  `limit_req_zone` or `upstream`) belong in a file in `conf.d/`.
+
+## DNS challenge: "The requested dns-… plugin does not appear to be installed"
+
+Install the plugin for your provider (`apt install python3-certbot-dns-cloudflare`, `pacman -S certbot-dns-cloudflare`,
+or `pip install certbot-dns-cloudflare` in certbot's environment) and check `certbot plugins` lists it. Then retry;
+with the DNS challenge, nothing was changed by the failed attempt.
+
 ## Let's Encrypt fails
 
 ngx keeps the site on HTTP and prints certbot's error. Check, in this order:
@@ -150,4 +183,5 @@ IDs are tied to `<file name>#<domain>`. Renaming a file or changing the first `s
 
 ## Undo a change
 
-Every change made by ngx is backed up; see [Backups](how-it-works.md#backups).
+`ngx history` lists the changes ngx made, and `sudo ngx undo` reverts the latest one (or `sudo ngx undo <ID>` an
+earlier one). In the dashboard, press `u`. See [Backups](how-it-works.md#backups).

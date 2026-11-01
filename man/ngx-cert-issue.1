@@ -4,16 +4,22 @@
 .SH NAME
 ngx\-cert\-issue \- Obtain a Let\*(Aqs Encrypt certificate for a site and switch it to HTTPS
 .SH SYNOPSIS
-\fBngx\-cert\-issue\fR [\fB\-\-email\fR] [\fB\-\-staging\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fISITE\fR> 
+\fBngx\-cert\-issue\fR [\fB\-\-email\fR] [\fB\-\-staging\fR] [\fB\-\-dns\fR] [\fB\-\-dns\-credentials\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fISITE\fR> 
 .SH DESCRIPTION
 Obtain a Let\*(Aqs Encrypt certificate for a site and switch it to HTTPS
 .SH OPTIONS
 .TP
 \fB\-\-email\fR \fI<EMAIL>\fR
-Email for expiry notices
+Email for the Let\*(Aqs Encrypt account (if none exists yet)
 .TP
 \fB\-\-staging\fR
 Use the Let\*(Aqs Encrypt staging server
+.TP
+\fB\-\-dns\fR \fI<PLUGIN>\fR
+Use the DNS challenge with this certbot DNS plugin (e.g. cloudflare): wildcards, no port 80 needed
+.TP
+\fB\-\-dns\-credentials\fR \fI<FILE>\fR
+Credentials file for the DNS plugin (e.g. /root/.secrets/cloudflare.ini, mode 600)
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 Print help

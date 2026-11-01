@@ -1,5 +1,8 @@
 //! Full-screen dashboard (`ngx` with no arguments).
 
+mod form;
+mod logview;
+
 use crate::cmd;
 use crate::env::Env;
 use crate::render::{self, Tone};
@@ -18,7 +21,7 @@ use unicode_width::UnicodeWidthStr;
 
 const REFRESH: Duration = Duration::from_secs(5);
 
-fn style(t: Tone) -> Style {
+pub(crate) fn style(t: Tone) -> Style {
     match t {
         Tone::Plain => Style::default(),
         Tone::Dim => Style::default().fg(Color::DarkGray),
@@ -48,6 +51,8 @@ struct App {
     report_rx: Receiver<Report>,
     detail_tx: Sender<(String, Vec<render::Line>)>,
     detail_rx: Receiver<(String, Vec<render::Line>)>,
+    form: Option<form::Form>,
+    logs: Option<logview::LogView>,
 }
 
 enum Action {
@@ -56,10 +61,32 @@ enum Action {
     Toggle,
     Remove,
     Renew,
+    Undo,
     Issue,
     Logs(bool),
     Test,
     Reload,
+    /// The dashboard form was submitted: add (no site) or edit a site.
+    Save(Option<String>, Box<cmd::AddArgs>),
+}
+
+impl Action {
+    fn label(&self, id: &str) -> String {
+        match self {
+            Action::Add => "add".into(),
+            Action::Edit => format!("edit #{id}"),
+            Action::Toggle => format!("enable/disable #{id}"),
+            Action::Remove => format!("remove #{id}"),
+            Action::Renew => format!("renew #{id}"),
+            Action::Undo => "undo".into(),
+            Action::Issue => format!("issue certificate #{id}"),
+            Action::Logs(_) => format!("logs #{id}"),
+            Action::Test => "test".into(),
+            Action::Reload => "reload".into(),
+            Action::Save(None, _) => "add".into(),
+            Action::Save(Some(id), _) => format!("edit #{id}"),
+        }
+    }
 }
 
 impl App {
@@ -153,6 +180,8 @@ pub fn run() -> Result<()> {
         report_rx,
         detail_tx,
         detail_rx,
+        form: None,
+        logs: None,
     };
     let mut term = ratatui::init();
     let res = main_loop(&mut term, &mut app);
@@ -173,12 +202,36 @@ fn main_loop(term: &mut DefaultTerminal, app: &mut App) -> Result<()> {
                 app.detail = Some((key, lines));
             }
         }
+        if let Some(l) = &mut app.logs {
+            l.poll();
+        }
         term.draw(|f| draw(f, app))?;
         if !event::poll(Duration::from_millis(200))? {
             continue;
         }
         let Event::Key(k) = event::read()? else { continue };
         if k.kind != KeyEventKind::Press {
+            continue;
+        }
+        if let Some(fm) = &mut app.form {
+            match fm.key(k) {
+                form::Outcome::Stay => {}
+                form::Outcome::Cancel => app.form = None,
+                form::Outcome::Submit(site, args) => {
+                    run_action(term, app, Action::Save(site, args))?;
+                    // back to the form if it was cancelled or failed, so nothing typed is lost
+                    if matches!(app.message, Some((_, Tone::Good))) {
+                        app.form = None;
+                    }
+                }
+            }
+            continue;
+        }
+        if let Some(l) = &mut app.logs {
+            let page = term.size().map(|s| s.height.saturating_sub(4) as usize).unwrap_or(20);
+            if !l.key(k, page) {
+                app.logs = None;
+            }
             continue;
         }
         if app.filtering {
@@ -276,6 +329,7 @@ fn key_action(app: &mut App, k: KeyEvent) -> Result<Option<Flow>> {
         KeyCode::Char('d') => Flow::Run(Action::Toggle),
         KeyCode::Char('x') | KeyCode::Delete => Flow::Run(Action::Remove),
         KeyCode::Char('r') => Flow::Run(Action::Renew),
+        KeyCode::Char('u') => Flow::Run(Action::Undo),
         KeyCode::Char('i') => Flow::Run(Action::Issue),
         KeyCode::Char('l') => Flow::Run(Action::Logs(false)),
         KeyCode::Char('L') => Flow::Run(Action::Logs(true)),
@@ -290,29 +344,49 @@ extern "C" fn ignore_sigint(_: libc::c_int) {}
 /// Leave the alternate screen, run a CLI command, wait for Enter, come back.
 fn run_action(term: &mut DefaultTerminal, app: &mut App, a: Action) -> Result<()> {
     let site = app.selected().and_then(|i| app.report.as_ref().map(|r| r.sites[i].id.to_string()));
-    let needs_site = !matches!(a, Action::Add | Action::Test | Action::Reload);
+    let needs_site = !matches!(a, Action::Add | Action::Test | Action::Reload | Action::Undo | Action::Save(..));
     let Some(id) = site.clone().or_else(|| (!needs_site).then(String::new)) else {
         app.message = Some(("no site selected".into(), Tone::Warn));
         return Ok(());
     };
+    // these stay inside the dashboard
+    match a {
+        Action::Add => {
+            app.form = Some(form::Form::new(None));
+            return Ok(());
+        }
+        Action::Edit => {
+            match cmd::current_spec(&id) {
+                Ok(spec) => app.form = Some(form::Form::new(Some((id, spec)))),
+                Err(e) => app.message = Some((e.to_string().lines().next().unwrap_or("").to_string(), Tone::Bad)),
+            }
+            return Ok(());
+        }
+        Action::Logs(err) => {
+            if let Some(s) = app.selected().and_then(|i| app.report.as_ref().map(|r| r.sites[i].clone())) {
+                app.logs = Some(logview::LogView::open(s, err));
+            }
+            return Ok(());
+        }
+        _ => {}
+    }
     ratatui::restore();
     println!();
     // let Ctrl-C stop child processes (tail -F, editors, certbot) without killing the dashboard
     let prev = unsafe { libc::signal(libc::SIGINT, ignore_sigint as *const () as libc::sighandler_t) };
+    crate::ops::new_change(&format!("dashboard: {}", a.label(&id)));
     let res = match a {
-        Action::Add => cmd::add(cmd::AddArgs::default()),
-        Action::Edit => cmd::edit(&id, cmd::AddArgs::default(), false),
+        Action::Undo => cmd::undo(None, false, false),
+        Action::Add | Action::Edit | Action::Logs(_) => unreachable!("handled in the dashboard"),
+        Action::Save(None, args) => cmd::add(*args),
+        Action::Save(Some(sid), args) => cmd::edit(&sid, *args, false),
         Action::Toggle => {
             let enabled = app.selected().and_then(|i| app.report.as_ref().map(|r| r.status[i].state != State::Disabled)).unwrap_or(true);
             cmd::set_enabled(&id, !enabled, false)
         }
         Action::Remove => cmd::rm(&id, false, false, false),
         Action::Renew => cmd::cert(cmd::CertCmd::Renew { site: id.clone(), force: false }),
-        Action::Issue => cmd::cert(cmd::CertCmd::Issue { site: id.clone(), email: None, staging: false }),
-        Action::Logs(err) => {
-            println!("(Ctrl-C to stop)");
-            cmd::logs(&id, err, true, 40)
-        }
+        Action::Issue => cmd::cert(cmd::CertCmd::Issue { site: id.clone(), email: None, staging: false, dns: None, dns_credentials: None }),
         Action::Test => cmd::test(),
         Action::Reload => cmd::reload(),
     };
@@ -368,7 +442,11 @@ fn draw(f: &mut Frame, app: &mut App) {
     }
     f.render_widget(Paragraph::new(Line::from(title)), top);
 
-    if app.zoom {
+    if let Some(fm) = &app.form {
+        fm.draw(f, body);
+    } else if let Some(l) = &app.logs {
+        l.draw(f, body);
+    } else if app.zoom {
         draw_detail(f, app, body);
     } else {
         let rows = app.visible().len() as u16;
@@ -379,10 +457,20 @@ fn draw(f: &mut Frame, app: &mut App) {
     }
 
     // footer
-    let footer: Line = if app.filtering {
+    let footer: Line = if app.form.is_some() {
+        Line::from(Span::styled(" changes are shown for review before anything is written", style(Tone::Dim)))
+    } else if app.logs.is_some() {
+        let keys = [("↑↓ PgUp PgDn", "scroll"), ("End", "follow"), ("Home", "oldest"), ("e", "access/error"), ("Esc", "close")];
+        let mut spans = Vec::new();
+        for (k, d) in keys {
+            spans.push(Span::styled(format!(" {k}"), style(Tone::Accent)));
+            spans.push(Span::styled(format!(" {d} "), style(Tone::Dim)));
+        }
+        Line::from(spans)
+    } else if app.filtering {
         Line::from(vec![Span::styled(" filter: ", style(Tone::Accent)), Span::raw(crate::validate::clean(&app.filter).into_owned()), Span::styled("▏", style(Tone::Accent))])
     } else {
-        let keys = [("↑↓", "select"), ("⏎", "zoom"), ("/", "filter"), ("a", "add"), ("e", "edit"), ("d", "on/off"), ("x", "remove"), ("i", "issue cert"), ("r", "renew"), ("l/L", "logs"), ("t", "test"), ("R", "reload"), ("g", "refresh"), ("q", "quit")];
+        let keys = [("↑↓", "select"), ("⏎", "zoom"), ("/", "filter"), ("a", "add"), ("e", "edit"), ("d", "on/off"), ("x", "remove"), ("i", "issue cert"), ("r", "renew"), ("l/L", "logs"), ("t", "test"), ("R", "reload"), ("u", "undo"), ("g", "refresh"), ("q", "quit")];
         let mut spans = Vec::new();
         if let Some((m, t)) = &app.message {
             spans.push(Span::styled(format!(" {} ", crate::validate::clean(m)), style(*t)));

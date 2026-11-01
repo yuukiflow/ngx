@@ -1,0 +1,1 @@
+{"domain":"app.example.com","aliases":["www.app.example.com"],"inbound":443,"backend":{"type":"proxy","host":"127.0.0.1","port":3000,"websocket":true},"ssl":{"mode":"letsencrypt"},"redirect_http":true,"max_body":"50m","hsts":true,"auth":true,"rate_limit":"10r/s","canonical":true,"routes":[{"path":"/api/","host":"127.0.0.1","port":8080}]}

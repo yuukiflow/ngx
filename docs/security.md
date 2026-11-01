@@ -16,6 +16,10 @@ Every value that ends up in a generated config, a file name, or a certbot comman
 | Document root, php-fpm socket, certificate, key, log paths | absolute paths of `A-Z a-z 0-9 / . _ - + @ = , ~ :`, with no `.` or `..` components |
 | Ports | 1–65535 |
 | Email | `user@domain`, not starting with `-` |
+| Upload size, rate limit | `50m`, `512k` / `10r/s`, `300r/m` |
+| Extra route paths | `/api/`: letters, digits and `/ . _ -`, never `/.well-known/` |
+| DNS plugin | lowercase name (`cloudflare`), not starting with `-` |
+| Basic-auth user names | letters, digits and `. _ - @` (never `:`) |
 
 So a value can't contain whitespace, quotes, `;`, `{`, `}`, `#`, `$` or newlines, and can't inject directives
 (`example.com; include /etc/shadow`). A domain can't escape `sites-available/` (`../../etc/cron.d/x`). Nothing can
@@ -41,12 +45,26 @@ enabled site already serves is refused too, so a new site can't take over an exi
   and only under `/.well-known/acme-challenge/`.
 - Proxied apps get the standard `Host`, `X-Real-IP`, `X-Forwarded-For` and `X-Forwarded-Proto` headers.
 
-With `--ssl existing`, ngx warns when the private key is readable by other users or not owned by root.
+- **Password protection** stores SHA-512 crypt hashes (never the password), in a file readable only by root and
+  nginx's worker group (`0640`); passwords need at least 8 characters. The ACME location is exempt, so renewals
+  still work.
+- **Extra routes** use `^~` locations, so a regex location (such as PHP's) can't take over their paths.
+
+With `--ssl existing` or a DNS-challenge credentials file, ngx warns when the secret file is readable by other users
+or not owned by root.
+
+### Snippets
+
+Files in `ngx.d/<domain>/*.conf` are your own nginx directives, so ngx doesn't restrict what they contain. It's the
+same trust as writing nginx config by hand, and they're only writable by root. `ngx edit --snippet` still runs them
+through `nginx -t` with rollback, and records them in the history.
 
 ## Changes are validated or undone
 
 Every change is a transaction (see [How it works](how-it-works.md#safe-changes)):
 
+- **One at a time.** An exclusive lock (`/var/lib/ngx/lock`, opened without following symlinks) means two ngx
+  processes never interleave changes, backups and rollbacks.
 - **Backups first.** Files are copied to `/var/lib/ngx/backups/<time>/` before anything is touched.
 - **Atomic writes.** Each file is written to an exclusively created temp file, then renamed into place. nginx never
   sees a half-written file, and a pre-planted file or symlink is never followed. Existing files keep their mode; new
@@ -54,6 +72,10 @@ Every change is a transaction (see [How it works](how-it-works.md#safe-changes))
 - **Tested before it's live.** `nginx -t -c <the nginx.conf ngx manages>` runs before the reload. If it fails, or if
   nginx can't be found to run it, every file is restored and nothing changes.
 - **Reported only once it's live.** ngx waits until nginx's new workers have taken over before saying a change is done.
+- **Recorded and reversible.** Every command's changes are in `ngx history` with who ran them, and `ngx undo` puts the
+  files back (through the same validated path).
+- **Renewals reach nginx.** Certificates get a deploy hook that reloads nginx, so a renewed certificate is actually
+  served; `ngx check` and `ngx doctor` flag any that don't.
 
 ## No foreign code runs as root
 
@@ -83,7 +105,9 @@ a crafted request can't send escape sequences to your terminal when you look at 
 | Path | Mode | Contents |
 |---|---|---|
 | `sites-available/*.conf`, `00-ngx-logformat.conf` | `0644` (or the file's existing mode) | site configs |
-| `/var/lib/ngx/backups/` | `0700`, files `0600` | copies of replaced files |
+| `/var/lib/ngx/backups/` | `0700`, files `0600` | copies of replaced files, `manifest.json` (history) |
+| `/var/lib/ngx/lock` | `0600` | change lock |
+| `ngx.d/<domain>/htpasswd` | `0640`, group = nginx workers | password hashes |
 | `/var/lib/ngx/state.json` | `0644` | site IDs |
 | `/var/lib/ngx/acme/` | `0755` | ACME challenge tokens (must be readable by nginx) |
 | document roots it creates | `0755` | an `index.html` placeholder |

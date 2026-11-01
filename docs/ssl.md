@@ -15,6 +15,7 @@ On Arch, certbot ships no timer; create one or a cron job (see [troubleshooting]
 
 - **New site**: choose *Let's Encrypt* in `ngx add` (this is the default with `-y`).
 - **Existing site**: `ngx cert issue <site>`, or `ngx edit <site>` and pick *Let's Encrypt*.
+- **Wildcards, or no port 80**: the [DNS challenge](#dns-challenge).
 
 Before you start:
 
@@ -36,6 +37,34 @@ location ^~ /.well-known/acme-challenge/ {
 certbot runs in webroot mode (`certbot certonly --webroot -w /var/lib/ngx/acme`) and drops the challenge file there.
 This works the same for first issuance and every renewal, and doesn't need certbot to edit nginx files. The
 certificate is named after the domain (`--cert-name <domain>`) and stored in `/etc/letsencrypt/live/<domain>/`.
+
+ngx also passes `--deploy-hook "systemctl reload nginx"` (or `nginx -s reload` without systemd). certbot saves it in
+the renewal config and runs it after every successful renewal. Without it, a webroot certificate renews on disk but
+nginx keeps serving the old one from memory until something reloads it, and the site expires anyway.
+
+### DNS challenge
+
+For wildcard certificates (`*.example.com`), or servers that aren't reachable from the internet on port 80, certbot
+can prove you own the domain by creating a DNS record through your DNS provider's API.
+
+1. Install the plugin for your provider: `certbot-dns-cloudflare`, `-route53`, `-digitalocean`, `-ovh`, `-linode`,
+   `-google`, `-rfc2136`… (`apt install python3-certbot-dns-cloudflare`, `pacman -S certbot-dns-cloudflare`, or `pip`).
+2. Put the API credentials in a file only root can read, as the plugin's documentation describes:
+
+   ```
+   sudo install -m 600 /dev/null /root/.secrets/cloudflare.ini
+   sudo $EDITOR /root/.secrets/cloudflare.ini      # dns_cloudflare_api_token = …
+   ```
+3. Create or switch the site:
+
+   ```
+   sudo ngx add -d '*.example.com' -l 3000 --dns cloudflare --dns-credentials /root/.secrets/cloudflare.ini
+   sudo ngx cert issue 4 --dns cloudflare --dns-credentials /root/.secrets/cloudflare.ini
+   ```
+
+The certificate for `*.example.com` is stored as `/etc/letsencrypt/live/wildcard.example.com/`. Renewal uses the same
+plugin and credentials, unattended, so `RENEW` is `auto`. (Plugins that need no file, like `route53` with an IAM
+role, work without `--dns-credentials`.)
 
 ### Sites you wrote yourself
 
@@ -60,10 +89,19 @@ job`, `not issued by certbot`…).
 
 Turn auto-renewal on or off per certificate with `ngx cert auto <site> on|off`.
 
+`auto ⚠` means the certificate renews, but **nginx isn't reloaded afterwards**: the renewal config has no deploy hook,
+no `installer = nginx`, and there's no script in `/etc/letsencrypt/renewal-hooks/deploy/`. nginx would keep serving
+the old certificate until it expires. `sudo ngx cert auto <site> on` adds the hook; `ngx doctor` lists every
+certificate in that state.
+
 ## Expiry warnings
 
-- `valid until <date> ⚠`, in yellow: fewer than 30 days left. certbot normally renews at 30 days, so an `auto`
-  certificate showing this means renewals are failing. Run `sudo certbot renew --dry-run` to see why.
+- `valid until <date> ⚠`, in yellow: renewal is late. The warning starts at a third of the certificate's lifetime
+  (30 days for today's 90-day Let's Encrypt certificates, less for shorter-lived ones), which is when certbot renews,
+  so an `auto` certificate showing this means renewals are failing. Run `sudo certbot renew --dry-run` to see why.
+
+Let's Encrypt stopped sending expiry reminder emails in 2025. Run [`ngx check`](commands.md#ngx-check) from cron or
+your monitoring to be told instead.
 - `expired <date>`, in red: browsers refuse the site. Run `ngx cert renew <site> --force`, or `ngx cert issue <site>`
   if the certificate needs new names.
 

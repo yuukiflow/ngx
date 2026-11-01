@@ -488,11 +488,10 @@ pub fn load_all() -> Vec<Site> {
 /// Find a site by numeric ID or domain name.
 pub fn find<'a>(sites: &'a [Site], query: &str) -> anyhow::Result<&'a Site> {
     let q = query.trim().trim_start_matches('#');
-    if let Ok(id) = q.parse::<u32>() {
-        if let Some(s) = sites.iter().find(|s| s.id == id) {
+    if let Ok(id) = q.parse::<u32>()
+        && let Some(s) = sites.iter().find(|s| s.id == id) {
             return Ok(s);
         }
-    }
     sites
         .iter()
         .find(|s| s.matches(q))

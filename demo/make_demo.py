@@ -192,6 +192,7 @@ fullchain = {LE}/{name}/fullchain.pem
 [renewalparams]
 account = 0123456789abcdef
 authenticator = nginx
+installer = nginx
 {extra}server = https://acme-v02.api.letsencrypt.org/directory
 """)
 

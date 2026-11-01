@@ -94,7 +94,7 @@ pub fn thousands(n: u64) -> String {
     let s = n.to_string();
     let mut out = String::new();
     for (i, c) in s.chars().enumerate() {
-        if i > 0 && (s.len() - i) % 3 == 0 {
+        if i > 0 && (s.len() - i).is_multiple_of(3) {
             out.push(' ');
         }
         out.push(c);
@@ -129,9 +129,48 @@ pub fn ssl_cell(st: &Status) -> Line {
     }
 }
 
+/// Options of an ngx-managed site, and the user's snippets.
+fn settings(d: &mut Doc, s: &Site) {
+    use crate::nginx::template::{self, Spec};
+    let env = crate::env::Env::get();
+    let Some(spec) = s.managed.then(|| std::fs::read_to_string(env.host(&s.file)).ok()).flatten().and_then(|src| Spec::from_config(&src)) else {
+        return;
+    };
+    let o = &spec.opts;
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(b) = &o.max_body {
+        parts.push(format!("uploads up to {b}"));
+    }
+    if o.hsts {
+        parts.push("HSTS".into());
+    }
+    if o.auth {
+        let n = std::fs::read_to_string(env.host(&template::htpasswd_path(&spec.domain))).map(|t| t.lines().filter(|l| l.contains(':')).count()).unwrap_or(0);
+        parts.push(format!("password-protected ({n} user{})", if n == 1 { "" } else { "s" }));
+    }
+    if let Some(r) = &o.rate_limit {
+        parts.push(format!("rate limit {r} per client"));
+    }
+    if o.canonical {
+        parts.push(format!("aliases → {}", spec.domain));
+    }
+    if !parts.is_empty() {
+        d.item("Settings", vec![plain(parts.join("  ·  "))]);
+    }
+    let dir = template::site_dir(&spec.domain);
+    let mut snippets: Vec<String> = std::fs::read_dir(env.host(&dir))
+        .map(|rd| rd.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).filter(|n| n.ends_with(".conf")).collect())
+        .unwrap_or_default();
+    snippets.sort();
+    if !snippets.is_empty() {
+        d.item("Snippets", vec![plain(snippets.join(", ")), seg(format!("  ·  {}", env.short(&dir)), Tone::Dim)]);
+    }
+}
+
 pub fn renew_cell(st: &Status) -> Line {
     match &st.renew {
         Renew::None => vec![seg("—", Tone::Dim)],
+        Renew::Auto { reloads: false, .. } => vec![seg("auto ⚠", Tone::Warn)],
         Renew::Auto { .. } => vec![plain("auto")],
         Renew::Manual(_) => {
             let t = if st.cert.expired() || st.cert.expiring_soon() { Tone::Warn } else { Tone::Plain };
@@ -347,10 +386,13 @@ pub fn detail(s: &Site, st: &Status) -> Vec<Line> {
         }
         let renewal = match &st.renew {
             Renew::None => vec![seg("—", Tone::Dim)],
-            Renew::Auto { next } => {
+            Renew::Auto { next, reloads } => {
                 let mut l = vec![plain("auto")];
                 if let Some(n) = next {
                     l.push(seg(format!("  ·  {n}"), Tone::Dim));
+                }
+                if !reloads {
+                    l.push(seg(format!("  ·  ⚠ nginx isn't reloaded after renewal (fix: sudo ngx cert auto {} on)", s.id), Tone::Warn));
                 }
                 l
             }
@@ -401,23 +443,22 @@ pub fn detail(s: &Site, st: &Status) -> Vec<Line> {
             }
         }
     }
+    settings(&mut d, s);
 
     // BACKEND
-    if let (Kind::Proxy | Kind::FastCgi, Some(u)) = (s.kind(), s.upstream()) {
-        if !matches!(u, Upstream::Other(_)) {
+    if let (Kind::Proxy | Kind::FastCgi, Some(u)) = (s.kind(), s.upstream())
+        && !matches!(u, Upstream::Other(_)) {
             backend(&mut d, s, u);
         }
-    }
 
     // LOCATIONS
-    if let Some(b) = s.main() {
-        if !b.locations.is_empty() {
+    if let Some(b) = s.main()
+        && !b.locations.is_empty() {
             d.section("LOCATIONS");
             for l in &b.locations {
                 d.item(&l.matcher, vec![seg("→ ", Tone::Dim), plain(l.action.clone())]);
             }
         }
-    }
 
     // LOGS
     let main = s.main();
@@ -552,6 +593,7 @@ pub fn json(s: &Site, st: &Status) -> serde_json::Value {
             "expired": st.cert.expired(),
             "expiring_soon": st.cert.expiring_soon(),
             "renewal": match &st.renew { Renew::None => "none", Renew::Auto { .. } => "auto", Renew::Manual(_) => "manual" },
+            "reload_after_renewal": match &st.renew { Renew::Auto { reloads, .. } => serde_json::Value::Bool(*reloads), _ => serde_json::Value::Null },
         },
         "locations": s.main().map(|b| b.locations.iter().map(|l| serde_json::json!({"match": l.matcher, "action": l.action})).collect::<Vec<_>>()),
     })
