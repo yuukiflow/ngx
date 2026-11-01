@@ -127,22 +127,46 @@ enum Cmd {
     Reload,
     /// Check the environment: nginx, certbot, layout, renewal timer, permissions
     Doctor,
+    /// Rewrite ngx-managed sites with the current template (after an upgrade): diffs, one confirmation, one nginx -t
+    #[command(after_help = "Your settings and snippets are kept; only the generated parts change.\n\n\
+        Examples:\n  sudo ngx regen --all --dry-run\n  sudo ngx regen --all\n  sudo ngx regen 3 4")]
+    Regen {
+        /// Site IDs or domains
+        sites: Vec<String>,
+        /// Every site created by ngx
+        #[arg(long, conflicts_with = "sites")]
+        all: bool,
+        /// Don't ask for confirmation
+        #[arg(long, short)]
+        yes: bool,
+        /// Show the diffs without changing anything
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Split a file that defines several sites into one file per site (so each can be edited on its own)
+    #[command(after_help = "Server blocks are moved as they are; upstreams, maps and other shared directives stay in the original file.\n\n\
+        Example:\n  sudo ngx split 5")]
+    Split {
+        #[arg(help = SITE_HELP)]
+        site: String,
+        /// Don't ask for confirmation
+        #[arg(long, short)]
+        yes: bool,
+        /// Show the plan without changing anything
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Users of password-protected sites (basic auth)
     #[command(subcommand)]
     Auth(cmd::AuthCmd),
     /// Check every site for monitoring/cron: down sites, expired or expiring certificates, renewal problems
     #[command(after_help = "Exit status: 0 all good, 1 warnings, 2 a site is down or a certificate expired/missing.\n\n\
+        Notifications are sent when the problems change (and once when all is resolved), not on every run.\n\n\
         Examples:\n  ngx check\n  ngx check --json\n  \
-        # /etc/cron.d/ngx-check: mail the report when something is wrong (needs a working `mail`)\n  \
-        MAILTO=you@example.com\n  0 8 * * * root ngx check -q || ngx check")]
-    Check {
-        /// Print JSON
-        #[arg(long)]
-        json: bool,
-        /// No output, only the exit status
-        #[arg(long, short)]
-        quiet: bool,
-    },
+        ngx check --notify https://ntfy.sh/my-secret-topic\n  \
+        ngx check --notify-json https://hooks.slack.com/services/…\n  \
+        sudo ngx check --install-timer --every 1h --notify https://ntfy.sh/my-secret-topic --mail you@example.com")]
+    Check(cmd::CheckArgs),
     /// List recorded changes (newest first), optionally only those touching one site
     #[command(after_help = "Examples:\n  ngx history\n  ngx history 4\n  ngx history --json")]
     History {
@@ -179,6 +203,14 @@ enum Cmd {
     },
     /// Full-screen dashboard (also the default when no command is given)
     Tui,
+    /// Print a shell completion script (bash, zsh, fish, elvish, powershell)
+    #[command(after_help = "Install (the release packages and install.sh do this for you):\n  \
+        ngx completions bash | sudo tee /usr/share/bash-completion/completions/ngx\n  \
+        ngx completions zsh  | sudo tee /usr/share/zsh/site-functions/_ngx\n  \
+        ngx completions fish | sudo tee /usr/share/fish/vendor_completions.d/ngx.fish")]
+    Completions {
+        shell: clap_complete::Shell,
+    },
     /// Generate man pages into a directory
     #[command(hide = true)]
     Man {
@@ -205,6 +237,14 @@ fn man(dir: &std::path::Path) -> anyhow::Result<()> {
     }
     let mut out = Vec::new();
     walk(&Cli::command(), "ngx", dir, &mut out)?;
+    // completion scripts, packaged with the man pages
+    let comp = dir.parent().unwrap_or(std::path::Path::new(".")).join("completions");
+    std::fs::create_dir_all(&comp)?;
+    for (shell, file) in [(clap_complete::Shell::Bash, "ngx.bash"), (clap_complete::Shell::Zsh, "_ngx"), (clap_complete::Shell::Fish, "ngx.fish")] {
+        let mut buf = Vec::new();
+        clap_complete::generate(shell, &mut Cli::command(), "ngx", &mut buf);
+        std::fs::write(comp.join(file), buf)?;
+    }
     println!("wrote {} man pages to {}", out.len(), dir.display());
     Ok(())
 }
@@ -225,12 +265,14 @@ fn main() {
         Some(Cmd::Edit { site, snippet: Some(name), .. }) => cmd::edit_snippet(&site, &name),
         Some(Cmd::Edit { site, raw, args, .. }) => cmd::edit(&site, args, raw),
         Some(Cmd::Auth(c)) => cmd::auth(c),
+        Some(Cmd::Regen { sites, all, yes, dry_run }) => cmd::regen(&sites, all, yes, dry_run),
+        Some(Cmd::Split { site, yes, dry_run }) => cmd::split(&site, yes, dry_run),
         Some(Cmd::Cert(c)) => cmd::cert(c),
         Some(Cmd::Logs { site, error, follow, lines }) => cmd::logs(&site, error, follow, lines),
         Some(Cmd::Test) => cmd::test(),
         Some(Cmd::Reload) => cmd::reload(),
         Some(Cmd::Doctor) => cmd::doctor(),
-        Some(Cmd::Check { json, quiet }) => match cmd::check(json, quiet) {
+        Some(Cmd::Check(a)) => match cmd::check(&a) {
             Ok(code) => std::process::exit(code),
             Err(e) => {
                 eprintln!("error: {e:#}");
@@ -241,8 +283,17 @@ fn main() {
         Some(Cmd::Undo { id, yes, dry_run }) => cmd::undo(id.as_deref(), yes, dry_run),
         Some(Cmd::Init { yes, dry_run }) => cmd::init(yes, dry_run),
         Some(Cmd::Man { dir }) => man(&dir),
+        Some(Cmd::Completions { shell }) => {
+            use clap::CommandFactory;
+            clap_complete::generate(shell, &mut Cli::command(), "ngx", &mut std::io::stdout());
+            Ok(())
+        }
     };
     if let Err(e) = res {
+        if e.downcast_ref::<cmd::Aborted>().is_some() {
+            eprintln!("aborted — nothing changed");
+            std::process::exit(1);
+        }
         if let Some(inquire::InquireError::OperationCanceled | inquire::InquireError::OperationInterrupted) = e.downcast_ref() {
             eprintln!("cancelled");
             std::process::exit(130);

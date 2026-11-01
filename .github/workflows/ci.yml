@@ -23,10 +23,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
-      - name: man pages are up to date
+      - name: man pages and completions are up to date
         run: |
           cargo run --quiet -- man man
-          git diff --exit-code man/
+          test -z "$(git status --porcelain man/ completions/)" || { git status --porcelain man/ completions/; echo "run: cargo run -- man man"; exit 1; }
 
   e2e:
     name: End-to-end (${{ matrix.image }})

@@ -41,13 +41,20 @@ jobs:
           name=ngx-${GITHUB_REF_NAME}-${{ matrix.target }}
           mkdir -p dist/$name
           cp target/${{ matrix.target }}/release/ngx dist/$name/
-          cp -r man README.md dist/$name/
+          cp -r man completions README.md dist/$name/
           tar -C dist -czf dist/$name.tar.gz $name
           (cd dist && sha256sum $name.tar.gz > $name.tar.gz.sha256)
+      - name: Debian package
+        run: |
+          cargo install cargo-deb --locked
+          cargo deb --no-build --no-strip --target ${{ matrix.target }} --output dist/
+          (cd dist && for f in *.deb; do sha256sum "$f" > "$f.sha256"; done)
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
-          path: dist/*.tar.gz*
+          path: |
+            dist/*.tar.gz*
+            dist/*.deb*
 
   release:
     needs: build
@@ -63,5 +70,6 @@ jobs:
         with:
           files: |
             dist/*.tar.gz
+            dist/*.deb
             dist/SHA256SUMS
           generate_release_notes: true

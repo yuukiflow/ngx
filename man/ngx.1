@@ -1,6 +1,6 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH ngx 1  "ngx 0.2.0" 
+.TH ngx 1  "ngx 0.3.0" 
 .SH NAME
 ngx \- Manage nginx sites and Let\*(Aqs Encrypt certificates
 .SH SYNOPSIS
@@ -54,6 +54,12 @@ Validate, then reload nginx (waits until the new config is live)
 ngx\-doctor(1)
 Check the environment: nginx, certbot, layout, renewal timer, permissions
 .TP
+ngx\-regen(1)
+Rewrite ngx\-managed sites with the current template (after an upgrade): diffs, one confirmation, one nginx \-t
+.TP
+ngx\-split(1)
+Split a file that defines several sites into one file per site (so each can be edited on its own)
+.TP
 ngx\-auth(1)
 Users of password\-protected sites (basic auth)
 .TP
@@ -72,6 +78,9 @@ Create sites\-available/ + sites\-enabled/ and include them from nginx.conf (Arc
 ngx\-tui(1)
 Full\-screen dashboard (also the default when no command is given)
 .TP
+ngx\-completions(1)
+Print a shell completion script (bash, zsh, fish, elvish, powershell)
+.TP
 ngx\-help(1)
 Print this message or the help of the given subcommand(s)
 .SH EXTRA
@@ -84,4 +93,4 @@ Examples:
 
 Docs: docs/README.md · man ngx
 .SH VERSION
-v0.2.0
+v0.3.0

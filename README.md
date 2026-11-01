@@ -29,11 +29,14 @@ ID  STATUS  DOMAIN               SSL                     RENEW   IN   LOCAL     
   paths proxied to other apps. Your own directives go in per-site [snippets](docs/commands.md#--snippet) that survive
   regeneration.
 - **Change them the same way** (`ngx edit`): the questions come back pre-filled; you see a diff before anything is written.
+  Hand-written sites can be converted without losing their extra directives; files with several sites can be
+  [split](docs/commands.md#ngx-split); `ngx regen --all` brings every site to the current template (HTTP/2, …).
 - **Changes can't break nginx**: every change is backed up, checked with `nginx -t`, rolled back if it fails, and
   reported as done only once nginx is serving the new config. `ngx history` shows who changed what; `ngx undo`
   reverts it.
-- **Renewals you can trust**: certificates reload nginx when renewed, and `ngx check` (for cron or monitoring) tells
-  you about down sites and certificates that aren't renewing, now that Let's Encrypt no longer emails about it.
+- **Monitoring built in**: certificates reload nginx when renewed, optional health checks catch apps that run but
+  fail, and `ngx check` reports down sites, 5xx spikes and certificates that aren't renewing, as an exit status or as
+  ntfy / Slack / Discord / email notifications from a timer it installs for you.
 - **No new attack surface**: every value is validated before it goes into a config, generated configs hide dotfiles
   and only run existing PHP scripts, and nothing a backend user controls ever runs as root
   ([details](docs/security.md)).
@@ -42,7 +45,8 @@ ID  STATUS  DOMAIN               SSL                     RENEW   IN   LOCAL     
 
 ## Install
 
-Prebuilt static binary for any Linux (x86_64, aarch64), checksum-verified:
+Prebuilt static binary for any Linux (x86_64, aarch64), checksum-verified (also as `.deb` packages and the AUR
+package `ngx-bin`):
 
 ```
 curl -fsSL https://raw.githubusercontent.com/yuukiflow/ngx/main/scripts/install.sh | sudo sh
@@ -72,6 +76,8 @@ sudo ngx edit 4 -y --max-body 50m --route /api=8080
 sudo ngx edit 4 --snippet headers      # your own directives, validated
 sudo ngx auth add 4 alice              # password-protected sites
 ngx check                              # for cron / monitoring (exit 0/1/2)
+sudo ngx check --install-timer --notify https://ntfy.sh/my-topic   # get notified
+sudo ngx regen --all                   # after an upgrade: current template for every site
 ngx history && sudo ngx undo           # what changed, and revert it
 sudo ngx disable 4 / sudo ngx enable 4
 sudo ngx cert renew 2
@@ -94,6 +100,9 @@ ngx logs 4 -e -f
 | `ngx auth list\|add\|rm <site>` | Users of password-protected sites |
 | `ngx check [--json]` | Problems across all sites, with an exit status for monitoring |
 | `ngx history [<site>]` / `ngx undo [<id>]` | Change history and undo |
+| `ngx regen <site>…\|--all` | Regenerate sites with the current template |
+| `ngx split <site>` | One file per site |
+| `ngx completions <shell>` | Shell completions |
 | `ngx logs <site> [-e] [-f]` | Access / error log |
 | `ngx test` / `reload` | `nginx -t` / validated reload |
 | `ngx doctor` | Check the environment |

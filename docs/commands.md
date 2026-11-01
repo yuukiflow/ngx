@@ -1,7 +1,7 @@
 # Command reference
 
-Commands that change anything (`add`, `edit`, `rm`, `enable`, `disable`, `cert issue|renew|auto`, `auth add|rm`,
-`undo`, `reload`, `init`) need root. Read-only commands (`ls`, `show`, `logs`, `check`, `history`, `test`, `doctor`,
+Commands that change anything (`add`, `edit`, `rm`, `enable`, `disable`, `regen`, `split`, `cert issue|renew|auto`,
+`auth add|rm`, `undo`, `reload`, `init`, `check --install-timer`) need root. Read-only commands (`ls`, `show`, `logs`, `check`, `history`, `test`, `doctor`,
 the dashboard) work as a normal user, with some details hidden (see [Running without root](troubleshooting.md#running-without-root)).
 
 Wherever a command takes `<site>`, you can pass the site's **ID** (the first column of `ngx ls`) or **any of its
@@ -20,6 +20,8 @@ Dates are shown as `dd/mm/yy`.
 - [ngx show](#ngx-show)
 - [ngx add](#ngx-add)
 - [ngx edit](#ngx-edit)
+- [ngx regen](#ngx-regen)
+- [ngx split](#ngx-split)
 - [ngx rm](#ngx-rm)
 - [ngx enable / disable](#ngx-enable--ngx-disable)
 - [ngx cert](#ngx-cert)
@@ -32,6 +34,7 @@ Dates are shown as `dd/mm/yy`.
 - [ngx reload](#ngx-reload)
 - [ngx doctor](#ngx-doctor)
 - [ngx init](#ngx-init)
+- [ngx completions](#ngx-completions)
 
 ---
 
@@ -147,8 +150,16 @@ Creates a site, enables it and reloads nginx. Asks for anything you don't pass a
      clients get `429 Too Many Requests`.
    - *Redirect aliases to the main domain*: `www.example.com/x` → `example.com/x` (301).
    - *Extra paths proxied to other apps*: e.g. `/api=8080` sends `/api/…` to `127.0.0.1:8080`.
+   - *Security headers*: `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN` and
+     `Referrer-Policy: strict-origin-when-cross-origin`. (nginx drops server-level `add_header`s in a location that
+     has its own; keep that in mind in snippets.)
+   - *Health check path* (proxy sites): e.g. `/health`. The status and [`ngx check`](#ngx-check) call it on the app
+     directly, and anything but 2xx/3xx marks the site down, so an app that's running but broken is caught too.
 
-Then ngx prints the generated config and asks **Create and enable this site?**
+HTTPS sites are served over **HTTP/2** (`http2 on;`, or `listen … ssl http2` on nginx before 1.25.1).
+
+Then ngx prints the generated config and asks **Create and enable this site?** Answering no exits with status 1 and
+changes nothing.
 
 With SSL on a port other than 80, ngx also adds a port 80 server that redirects to HTTPS (unless `--no-redirect`).
 That server also answers Let's Encrypt challenges, so renewals keep working.
@@ -192,6 +203,8 @@ then writes the HTTPS config. If certbot fails, nothing is written.
 | `--rate-limit <RATE>` | Requests per client, e.g. `10r/s` or `300r/m`; `off` to remove. |
 | `--canonical on\|off` | Redirect the aliases to the main domain. |
 | `--route <PATH=PORT>` | Proxy a path to another app: `/api=8080`, `/ws=10.0.0.5:9000`. Repeat for more; `--route off` removes them. |
+| `--headers on\|off` | Security headers. |
+| `--health <PATH>` | Health check path for proxy sites, e.g. `/health`; `off` to remove. |
 | `-y, --yes` | No questions. Missing values use defaults: proxy, Let's Encrypt, port 443. `--domain` is required, plus `--local` for proxy sites. |
 | `--dry-run` | Print the config and the files that would be written. Doesn't need root. |
 
@@ -269,8 +282,12 @@ Details:
 - **Switching to Let's Encrypt** without an existing certificate follows the same steps as `add`: HTTP first, then certbot, then HTTPS.
 - **Adding names to a Let's Encrypt site**: the new config is applied first (it answers challenges for the new names), then certbot extends the certificate (`--expand`) and nginx is reloaded.
 - **Options** (upload size, HSTS, password, rate limit, alias redirect, extra paths) come back pre-ticked in the checklist. Flags change them directly: `--max-body off`, `--route off`, `--auth on`…
-- **Sites you wrote yourself** can be edited too, if they are a plain proxy, static or PHP site. ngx reads their current settings and warns that saving **replaces the file with a generated config**. The original is in the [backup](how-it-works.md#backups), and access/error log paths are kept. Custom directives (extra headers, rate limits, extra locations…) are not carried over, so check the diff, and move them into a [snippet](#--snippet).
-- ngx refuses files that define **several sites**, and setups it can't generate (variable upstreams, redirect-only sites, upstreams that aren't TCP or a unix socket). Use `--raw` for those.
+- **Sites you wrote yourself** can be edited too, if they are a plain proxy, static or PHP site. ngx reads their current settings and warns that saving **replaces the file with a generated config**; the original is in the [backup](how-it-works.md#backups), and access/error log paths are kept. What ngx doesn't generate is **kept**:
+  - `client_max_body_size` and an HSTS header become the matching options,
+  - a `location` that only proxies to `http://host:port` becomes an [extra route](#the-questions),
+  - every other server-level directive and location (`gzip`, `add_header`, `location /files/ { alias … }`…) is moved, as written, into the snippet `ngx.d/<domain>/converted.conf`, shown before you confirm,
+  - directives *inside* `location /` (or the PHP location) can't be kept, since the generated one replaces it. ngx lists them as warnings; re-add them with a more specific snippet location, or keep the site hand-written.
+- Files that define **several sites**: split them first with [`ngx split`](#ngx-split). Setups ngx can't generate (variable upstreams, redirect-only sites, upstreams that aren't TCP or a unix socket): use `--raw`.
 
 ### --snippet
 
@@ -298,6 +315,47 @@ Opens the nginx file in `$VISUAL`, `$EDITOR`, `nano` or `vi` (first one found). 
 save and quit, ngx checks the syntax, writes it and runs `nginx -t`. If anything fails, the change is rolled back
 and ngx offers to reopen the editor. A file created by ngx that you edit with `--raw` stops being "managed by ngx",
 but you can still use the prompt-based `ngx edit` on it later.
+
+---
+
+## ngx regen
+
+```
+ngx regen <site>... | --all  [-y] [--dry-run]
+```
+
+Rewrites sites created by ngx with the current template, after an upgrade brought template improvements (HTTP/2,
+hidden-file protection, the snippets include…). Your settings and snippets are kept; only the generated parts change.
+Every diff is shown, then one confirmation, one `nginx -t` for all of them, and one history entry (so one
+`ngx undo` reverts them all). Sites still waiting for their Let's Encrypt certificate keep their HTTP-only config.
+Sites ngx didn't create are skipped; convert them with `ngx edit`.
+
+```
+sudo ngx regen --all --dry-run      # what would change
+sudo ngx regen --all
+```
+
+---
+
+## ngx split
+
+```
+ngx split <site> [-y] [--dry-run]
+```
+
+For a file that defines several sites: moves each site's server blocks, as they are (with the comments right above
+them), into its own `<domain>.conf` in the same directory, enabled the same way (links in `sites-enabled/` too).
+Upstreams, maps and other shared directives stay in the original file; if nothing else is left, it's removed. Each
+site keeps its ID. After that, each one can be edited, disabled or removed on its own.
+
+```
+$ sudo ngx split shop.example.com
+sites-available/multi.conf defines 2 sites:
+  #8 shop.example.com → sites-available/shop.example.com.conf
+  #9 docs.example.com → sites-available/docs.example.com.conf
+  the other directives (upstreams, maps…) stay in sites-available/multi.conf
+> Split it? Yes
+```
 
 ---
 
@@ -405,7 +463,9 @@ echo "$PASSWORD" | sudo ngx auth add 4 deploy-bot --password-stdin
 ## ngx check
 
 ```
-ngx check [--json] [-q|--quiet]
+ngx check [--json] [-q] [--max-5xx <PERCENT>] [--notify <URL>]... [--notify-json <URL>]... [--mail <ADDRESS>]... [--always]
+ngx check --install-timer [--every <INTERVAL>] <notification options>
+ngx check --remove-timer
 ```
 
 Checks every enabled site in one go, for cron jobs and monitoring. Let's Encrypt no longer sends expiry emails, so
@@ -420,22 +480,39 @@ CRIT #4 staging.example.com: certificate expired 03/10/26
 
 | Level | When |
 |---|---|
-| `CRIT` | a site is down, a certificate expired or its file is missing, `nginx -t` fails |
-| `WARN` | a certificate is expiring (renewal late or manual), doesn't cover all the site's names, or renews without reloading nginx |
+| `CRIT` | a site is down (including a failing [health check](#the-questions)), a certificate expired or its file is missing, `nginx -t` fails |
+| `WARN` | a certificate is expiring (renewal late or manual), doesn't cover all the site's names, or renews without reloading nginx; more than `--max-5xx` percent (default 5) of a site's requests failed with 5xx in the last 24 hours (sites with their own access log and at least 20 requests) |
 
 Exit status: `0` all good, `1` warnings, `2` critical, `3` ngx itself failed. `--json` prints
 `{status, sites, problems: [{level, site, domain, message}]}`; `-q` prints nothing.
 
-To get an email when something is wrong (needs a working `mail` on the server):
+### Notifications
+
+- `--notify <URL>`: POSTs the report as plain text, with `Title`, `Priority` (`high` when something is critical) and
+  `Tags` headers: [ntfy](https://ntfy.sh) (`https://ntfy.sh/<your-secret-topic>`, or your own server) shows it as a
+  push notification; other webhooks get the text as the body.
+- `--notify-json <URL>`: POSTs `{"text", "content", "status", "host", "problems"}`. `text` is what Slack and
+  Mattermost incoming webhooks show, `content` is Discord's.
+- `--mail <ADDRESS>`: sends the report through the local `sendmail` (any MTA: postfix, msmtp-mta…).
+
+A notification is sent when the set of problems **changes**, and once more when everything is resolved ("all clear"),
+not on every run; `--always` sends one on every run with problems. If sending fails, the next run tries again.
+Notifications are sent with `curl` (installed almost everywhere), and URLs are checked so they can't inject anything.
+
+### Running it on a schedule
 
 ```
-# /etc/cron.d/ngx-check
-MAILTO=you@example.com
-0 8 * * * root ngx check -q || ngx check
+sudo ngx check --install-timer --every 1h --notify https://ntfy.sh/my-secret-topic --mail you@example.com
+sudo ngx check --remove-timer
 ```
 
-It works the same with any monitoring that runs a command and reads the exit status (Nagios, Icinga, Zabbix, a
-systemd timer with `OnFailure=`…).
+installs a systemd timer (`ngx-check.timer`, logs in `journalctl -u ngx-check`) running `ngx check -q` with the same
+options, or `/etc/cron.d/ngx-check` without systemd. `--every` takes `15m`, `30m`, `1h`, `6h`, `1d`… (at least 5
+minutes). The files are root-only (`0600`), since notification URLs are often secrets. ngx refuses to install the
+timer if its own binary isn't owned by root and protected from other users (a root timer must not run a file
+someone else can replace); install it system-wide first. The change is in `ngx history`.
+
+It works the same with any monitoring that runs a command and reads the exit status (Nagios, Icinga, Zabbix…).
 
 ---
 
@@ -468,7 +545,9 @@ Puts every file a change touched back as it was before it: changed files are res
 created files are removed, links are restored. Without an ID, it undoes the latest change. If later changes touched
 the same files, ngx lists them and warns that they'll be lost.
 
-The undo itself goes through `nginx -t` with rollback, and is recorded, so it can be undone too.
+The undo itself goes through `nginx -t` with rollback, and is recorded, so it can be undone too. Site IDs follow: undoing
+a rename gives the site its ID back, undoing a removal brings back the removed site's ID (IDs are never reused, so
+it's always free).
 
 ---
 
@@ -528,3 +607,20 @@ For distributions without the Debian `sites-available/` + `sites-enabled/` layou
 packages…): creates both directories and adds `include /etc/nginx/sites-enabled/*;` at the end of the `http { }`
 block in `nginx.conf`. The change is backed up, tested and reloaded like any other. `ngx add` runs this
 automatically (with a question) when needed. Does nothing if the layout already exists and is included.
+
+---
+
+## ngx completions
+
+```
+ngx completions bash|zsh|fish|elvish|powershell
+```
+
+Prints a completion script for subcommands and flags. The release packages, the AUR package and `install.sh`
+install the bash, zsh and fish ones; by hand:
+
+```
+ngx completions bash | sudo tee /usr/share/bash-completion/completions/ngx
+ngx completions zsh  | sudo tee /usr/share/zsh/site-functions/_ngx
+ngx completions fish | sudo tee /usr/share/fish/vendor_completions.d/ngx.fish
+```

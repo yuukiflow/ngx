@@ -52,7 +52,7 @@ The list refreshes every 5 seconds, and right after each action.
 
 `a` and `e` open a form with every setting of a site on one screen: domain, aliases, type, local port or document
 root, SSL mode (including the DNS challenge), public port, HTTP redirect, and the options (upload size, HSTS,
-password, rate limit, alias redirect, extra routes). Fields that don't apply are hidden (no php-fpm socket for a proxy,
+password, rate limit, alias redirect, security headers, health check, extra routes). Fields that don't apply are hidden (no php-fpm socket for a proxy,
 no HSTS without SSL).
 
 | Key | |
@@ -65,8 +65,8 @@ no HSTS without SSL).
 
 Values are checked as you type, with the same rules as the command line; an invalid field is marked `✗` with the
 reason, and saving jumps to it. Saving leaves the dashboard to show the generated config (or the diff for an edit)
-and asks for confirmation, then applies it like `ngx add` / `ngx edit`, Let's Encrypt included. If it fails, or
-you press `Esc` at the confirmation, you're back in the form with everything you typed.
+and asks for confirmation, then applies it like `ngx add` / `ngx edit`, Let's Encrypt included. If you answer no,
+press `Esc` at the confirmation, or it fails, you're back in the form with everything you typed.
 
 ## Log viewer
 
@@ -79,8 +79,10 @@ of its own, the shared one is shown (and, for the error log, only lines mentioni
 | `↑` `↓` / `PgUp` `PgDn` | Scroll (the view stays still while new lines arrive) |
 | `End` / `f` | Back to following |
 | `Home` | Oldest loaded line (the last ~2000 are kept) |
+| `/` | Search: type a text (case-insensitive), `Enter` keeps it, `Esc` clears it |
+| `p` | Problems only: 4xx/5xx in access logs, warnings and errors in error logs |
 | `e` / `Tab` | Switch between access and error log |
-| `Esc` / `q` | Close |
+| `Esc` / `q` | Close (`Esc` first clears a search or filter) |
 
 ## How actions work
 

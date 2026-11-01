@@ -113,8 +113,7 @@ pub fn undo(id: Option<&str>, yes: bool, dry_run: bool) -> Result<()> {
         )]]);
     }
     if !confirm("Undo this change?", later.is_empty(), yes)? {
-        println!("aborted — nothing changed");
-        return Ok(());
+        return Err(Aborted.into());
     }
     ops::undo(e, dry_run)?;
     if !dry_run {

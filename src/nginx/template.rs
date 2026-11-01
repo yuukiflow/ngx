@@ -85,6 +85,12 @@ pub struct Options {
     /// Redirect the aliases (e.g. www.) to the main domain.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub canonical: bool,
+    /// Common security headers (nosniff, frame and referrer policy).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub headers: bool,
+    /// Path the backend answers health checks on (e.g. `/health`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub health: Option<String>,
     /// Extra paths proxied to other local apps (`/api/` → 127.0.0.1:8080).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub routes: Vec<Route>,
@@ -131,6 +137,20 @@ pub fn site_dir(domain: &str) -> PathBuf {
 
 pub fn htpasswd_path(domain: &str) -> PathBuf {
     site_dir(domain).join("htpasswd")
+}
+
+/// `http2 on;` exists since nginx 1.25.1; older versions take `listen … ssl http2`.
+/// Sandbox (tests, demo): the current syntax.
+fn http2_directive() -> bool {
+    static V: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *V.get_or_init(|| {
+        if Env::get().sandboxed() {
+            return true;
+        }
+        let Some(v) = crate::nginx::ctl::version() else { return false };
+        let n: Vec<u32> = v.split('.').filter_map(|p| p.parse().ok()).collect();
+        (n.first().copied().unwrap_or(0), n.get(1).copied().unwrap_or(0), n.get(2).copied().unwrap_or(0)) >= (1, 25, 1)
+    })
 }
 
 fn zone_name(domain: &str) -> String {
@@ -195,7 +215,15 @@ fn proxy_headers(out: &mut String, indent: &str) {
 fn body(spec: &Spec, out: &mut String, tls: bool, port: u16) {
     let o = &spec.opts;
     if tls && o.hsts {
-        out.push_str("    add_header Strict-Transport-Security \"max-age=31536000\" always;\n\n");
+        out.push_str("    add_header Strict-Transport-Security \"max-age=31536000\" always;\n");
+    }
+    if o.headers {
+        out.push_str("    add_header X-Content-Type-Options \"nosniff\" always;\n");
+        out.push_str("    add_header X-Frame-Options \"SAMEORIGIN\" always;\n");
+        out.push_str("    add_header Referrer-Policy \"strict-origin-when-cross-origin\" always;\n");
+    }
+    if (tls && o.hsts) || o.headers {
+        out.push('\n');
     }
     if o.canonical && !spec.aliases.is_empty() {
         let scheme = if tls { "https" } else { "http" };
@@ -312,7 +340,12 @@ pub fn render(spec: &Spec, bootstrap: bool) -> String {
                 }
                 o.push_str("}\n\n");
             }
-            o.push_str(&format!("server {{\n    listen {port} ssl;\n    listen [::]:{port} ssl;\n    server_name {names};\n\n"));
+            if http2_directive() {
+                o.push_str(&format!("server {{\n    listen {port} ssl;\n    listen [::]:{port} ssl;\n    http2 on;\n    server_name {names};\n\n"));
+            } else {
+                // nginx before 1.25.1 has no `http2` directive
+                o.push_str(&format!("server {{\n    listen {port} ssl http2;\n    listen [::]:{port} ssl http2;\n    server_name {names};\n\n"));
+            }
             o.push_str(&format!("    ssl_certificate     {cert};\n    ssl_certificate_key {key};\n"));
             o.push_str("    ssl_protocols TLSv1.2 TLSv1.3;\n    ssl_session_cache shared:ngx_ssl:10m;\n    ssl_session_timeout 1d;\n\n");
             body(spec, &mut o, true, port);

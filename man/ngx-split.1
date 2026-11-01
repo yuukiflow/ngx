@@ -1,0 +1,27 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH ngx-split 1  "ngx-split " 
+.SH NAME
+ngx\-split \- Split a file that defines several sites into one file per site (so each can be edited on its own)
+.SH SYNOPSIS
+\fBngx\-split\fR [\fB\-y\fR|\fB\-\-yes\fR] [\fB\-\-dry\-run\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fISITE\fR> 
+.SH DESCRIPTION
+Split a file that defines several sites into one file per site (so each can be edited on its own)
+.SH OPTIONS
+.TP
+\fB\-y\fR, \fB\-\-yes\fR
+Don\*(Aqt ask for confirmation
+.TP
+\fB\-\-dry\-run\fR
+Show the plan without changing anything
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fISITE\fR>
+Site ID (from `ngx ls`) or any of its domain names
+.SH EXTRA
+Server blocks are moved as they are; upstreams, maps and other shared directives stay in the original file.
+
+Example:
+  sudo ngx split 5

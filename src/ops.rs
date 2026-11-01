@@ -48,6 +48,28 @@ pub struct Manifest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub user: Option<String>,
     pub files: Vec<Entry>,
+    /// Site ID moves made by the command (rename: old key → new key; rm: key → none),
+    /// so undo can put IDs back without ever reusing one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ids: Vec<IdChange>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct IdChange {
+    pub id: u32,
+    pub before: Option<String>,
+    pub after: Option<String>,
+}
+
+/// Record an ID change in the current history entry (called by `state`).
+pub fn note_id(id: u32, before: Option<&str>, after: Option<&str>) {
+    let mut g = GROUP.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(gr) = g.as_mut() {
+        gr.manifest.ids.push(IdChange { id, before: before.map(String::from), after: after.map(String::from) });
+        if gr.dir.join("manifest.json").exists() {
+            let _ = save_manifest(&gr.dir, &gr.manifest);
+        }
+    }
 }
 
 /// The history entry the current command writes to. All transactions of one
@@ -129,7 +151,7 @@ impl Group {
             }
         };
         let user = std::env::var("SUDO_USER").ok().or_else(|| std::env::var("USER").ok());
-        let manifest = Manifest { time: now.format("%d/%m/%y %H:%M:%S").to_string(), command: command_line(), user, files: Vec::new() };
+        let manifest = Manifest { time: now.format("%d/%m/%y %H:%M:%S").to_string(), command: command_line(), user, files: Vec::new(), ids: Vec::new() };
         Ok(Group { id, dir, manifest, pending: Vec::new() })
     }
 }
@@ -281,6 +303,18 @@ impl Tx {
         Some(gr.id.clone())
     }
 
+    /// Commit files that aren't nginx configuration (timers…): recorded in the
+    /// history, no nginx test or reload.
+    pub fn commit_files(self) -> Result<()> {
+        if self.dry_run {
+            return Ok(());
+        }
+        if let Some(id) = self.record() {
+            println!("backup: {id} (undo with `ngx undo {id}`)");
+        }
+        Ok(())
+    }
+
     /// Validate with `nginx -t`; roll back on failure, reload on success.
     pub fn commit(mut self) -> Result<()> {
         if self.dry_run {
@@ -308,11 +342,26 @@ impl Tx {
             }
             Some(_) => {}
         }
-        if let Some(id) = self.record() {
-            println!("backup: {id} (undo with `ngx undo {id}`)");
+        match ctl::reload() {
+            Ok(msg) => {
+                if let Some(id) = self.record() {
+                    println!("backup: {id} (undo with `ngx undo {id}`)");
+                }
+                println!("{msg}");
+                Ok(())
+            }
+            Err(e) => {
+                // nginx accepted the config but didn't (or not in time) switch to it, e.g. a port
+                // already in use. Never leave files on disk that differ from what nginx serves:
+                // the next unrelated reload would apply them by surprise.
+                self.rollback();
+                let resync = match ctl::reload() {
+                    Ok(_) => "nginx reloaded with the previous configuration".to_string(),
+                    Err(e2) => format!("reloading the previous configuration failed too: {e2:#}"),
+                };
+                bail!("reload failed, changes rolled back ({resync}):\n  {e:#}");
+            }
         }
-        println!("{}", ctl::reload()?);
-        Ok(())
     }
 }
 
@@ -363,7 +412,7 @@ fn legacy_manifest(dir: &Path) -> Option<Manifest> {
     }
     let id = dir.file_name()?.to_string_lossy().into_owned();
     let time = chrono::NaiveDateTime::parse_from_str(id.get(..15)?, "%Y%m%d-%H%M%S").ok()?.format("%d/%m/%y %H:%M:%S").to_string();
-    Some(Manifest { time, command: "(recorded before ngx kept command history)".into(), user: None, files })
+    Some(Manifest { time, command: "(recorded before ngx kept command history)".into(), user: None, files, ids: Vec::new() })
 }
 
 /// Keep the newest `keep` entries.
@@ -388,7 +437,17 @@ pub fn undo(entry: &HistoryEntry, dry_run: bool) -> Result<()> {
             }
         }
     }
-    tx.commit()
+    tx.commit()?;
+    // put the site IDs back (newest change first)
+    for c in entry.manifest.ids.iter().rev() {
+        match (&c.before, &c.after) {
+            (Some(b), Some(a)) => crate::state::rekey(a, b),
+            (Some(b), None) => crate::state::restore(b, c.id),
+            (None, Some(a)) => crate::state::forget(a),
+            (None, None) => {}
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

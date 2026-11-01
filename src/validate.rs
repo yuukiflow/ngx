@@ -70,6 +70,20 @@ pub fn route_path(p: &str) -> bool {
         && !p.starts_with("/.well-known/")
 }
 
+/// Health check path: `/health`, `/api/status`.
+pub fn health_path(p: &str) -> bool {
+    p.starts_with('/') && p.len() <= 256 && p.chars().all(|c| c.is_ascii_alphanumeric() || "/._-".contains(c)) && !p.split('/').any(|c| c == "..")
+}
+
+/// Notification URL: http(s), and nothing a unit file, crontab or shell would
+/// interpret (no whitespace, quotes, `$`, `;`, backslash or backtick).
+pub fn url(u: &str) -> bool {
+    (u.starts_with("https://") || u.starts_with("http://"))
+        && u.len() > 8
+        && u.len() < 2048
+        && u.chars().all(|c| c.is_ascii_alphanumeric() || "-._~:/?#[]@!&()*+,=%".contains(c))
+}
+
 /// Rough email check, mostly to keep it a single safe certbot argument.
 pub fn email(e: &str) -> bool {
     let Some((user, dom)) = e.split_once('@') else { return false };
@@ -182,6 +196,14 @@ pub fn spec(s: &Spec) -> Result<()> {
         }
     if o.hsts && s.ssl == Ssl::None {
         bail!("HSTS needs HTTPS: choose an SSL mode or turn HSTS off");
+    }
+    if let Some(h) = &o.health {
+        if !health_path(h) {
+            bail!("invalid health check path {h:?} (e.g. /health)");
+        }
+        if !matches!(s.backend, Backend::Proxy { .. }) {
+            bail!("health checks are for reverse proxy sites (they call the app directly)");
+        }
     }
     let mut seen = Vec::new();
     for r in &o.routes {

@@ -38,6 +38,8 @@ enum K {
     RateLimit,
     Canonical,
     Routes,
+    Headers,
+    Health,
 }
 
 enum V {
@@ -114,6 +116,8 @@ impl Form {
             Field { k: K::Auth, label: "Password", v: V::Toggle(o.auth), hint: "basic auth; users: ngx auth add <site> <user>" },
             text(K::RateLimit, "Rate limit", o.rate_limit.unwrap_or_default(), "per client, e.g. 10r/s (empty: none)"),
             Field { k: K::Canonical, label: "Aliases → domain", v: V::Toggle(o.canonical), hint: "redirect the aliases to the main domain" },
+            Field { k: K::Headers, label: "Security headers", v: V::Toggle(o.headers), hint: "nosniff, X-Frame-Options, Referrer-Policy" },
+            text(K::Health, "Health check", o.health.clone().unwrap_or_default(), "path the app answers on, e.g. /health (empty: none)"),
             text(K::Routes, "Extra routes", o.routes.iter().map(|r| r.to_string()).collect::<Vec<_>>().join(" "), "e.g. /api=8080 /ws=10.0.0.5:9000"),
         ];
         let title = match &editing {
@@ -145,7 +149,7 @@ impl Form {
     fn visible(&self, k: K) -> bool {
         let (kind, ssl) = (self.choice(K::Type), self.choice(K::Ssl));
         match k {
-            K::Local | K::WebSocket => kind == 0,
+            K::Local | K::WebSocket | K::Health => kind == 0,
             K::Root => kind != 0,
             K::Socket => kind == 2,
             K::DnsPlugin | K::DnsCreds => ssl == 1,
@@ -184,6 +188,7 @@ impl Form {
             K::Inbound if !t.parse::<u16>().is_ok_and(|p| p > 0) => bad("a port number"),
             K::MaxBody if !t.is_empty() && !validate::size(&t) => bad("e.g. 10m, 512k, 1g"),
             K::RateLimit if !t.is_empty() && !validate::rate(&t) => bad("e.g. 10r/s or 300r/m"),
+            K::Health if !t.is_empty() && !validate::health_path(&t) => bad("a path like /health"),
             K::Routes => t
                 .split_whitespace()
                 .find(|r| !Route::parse(r).is_some_and(|r| validate::route_path(&r.path) && validate::host(&r.host) && r.port > 0))
@@ -219,6 +224,8 @@ impl Form {
             rate_limit: Some(opt(self.txt(K::RateLimit)).unwrap_or_else(|| "off".into())),
             canonical: onoff(self.on(K::Canonical)),
             routes: if routes.is_empty() { vec!["off".into()] } else { routes },
+            headers: onoff(self.on(K::Headers)),
+            health: Some(if kind == 0 { opt(self.txt(K::Health)) } else { None }.unwrap_or_else(|| "off".into())),
             websocket_set: (kind == 0).then(|| self.on(K::WebSocket)),
             redirect_set: Some(self.on(K::Redirect)),
             review: true,
@@ -319,5 +326,112 @@ impl Form {
             foot_lines.insert(0, Line::from(Span::styled(format!(" {e}"), style(Tone::Bad))));
         }
         f.render_widget(Paragraph::new(foot_lines), foot);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::crossterm::event::{KeyEventKind, KeyEventState};
+    use ratatui::{Terminal, backend::TestBackend};
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent { code, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE }
+    }
+    fn ctrl(c: char) -> KeyEvent {
+        KeyEvent { code: KeyCode::Char(c), modifiers: KeyModifiers::CONTROL, kind: KeyEventKind::Press, state: KeyEventState::NONE }
+    }
+    fn typing(f: &mut Form, s: &str) {
+        for c in s.chars() {
+            assert!(matches!(f.key(key(KeyCode::Char(c))), Outcome::Stay));
+        }
+    }
+    fn screen(f: &Form) -> String {
+        let mut t = Terminal::new(TestBackend::new(110, 30)).unwrap();
+        t.draw(|fr| f.draw(fr, fr.area())).unwrap();
+        let buf = t.backend().buffer().clone();
+        (0..buf.area.height).map(|y| (0..buf.area.width).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>() + "\n").collect()
+    }
+
+    #[test]
+    fn new_site_submits_every_value() {
+        let mut f = Form::new(None);
+        typing(&mut f, "Shop.Example.com");
+        f.key(key(KeyCode::Tab));
+        typing(&mut f, "www.shop.example.com");
+        f.key(key(KeyCode::Tab)); // type: proxy
+        f.key(key(KeyCode::Tab));
+        typing(&mut f, "3000");
+        f.key(key(KeyCode::Tab)); // websocket
+        f.key(key(KeyCode::Char(' ')));
+        let Outcome::Submit(site, a) = f.key(ctrl('s')) else { panic!("should submit") };
+        assert_eq!(site, None);
+        assert_eq!(a.domain.as_deref(), Some("shop.example.com"));
+        assert_eq!(a.aliases, vec!["www.shop.example.com".to_string()]);
+        assert_eq!(a.kind.as_deref(), Some("proxy"));
+        assert_eq!(a.local.as_deref(), Some("3000"));
+        assert_eq!(a.websocket_set, Some(true));
+        assert_eq!(a.ssl.as_deref(), Some("letsencrypt"));
+        assert_eq!(a.inbound, Some(443));
+        assert!(a.review && !a.yes, "the command line still asks for the final confirmation");
+        assert_eq!(a.routes, vec!["off".to_string()]);
+    }
+
+    #[test]
+    fn invalid_values_block_saving() {
+        let mut f = Form::new(None);
+        typing(&mut f, "bad domain;");
+        assert!(matches!(f.key(ctrl('s')), Outcome::Stay));
+        let s = screen(&f);
+        assert!(s.contains("New site"));
+        assert!(s.contains("✗ not a valid domain name"), "{s}");
+        assert!(s.contains("Domain: not a valid domain name"));
+    }
+
+    #[test]
+    fn fields_follow_the_choices() {
+        let mut f = Form::new(None);
+        assert!(screen(&f).contains("Local port") && !screen(&f).contains("php-fpm socket"));
+        f.key(key(KeyCode::Tab));
+        f.key(key(KeyCode::Tab)); // site type
+        f.key(key(KeyCode::Right));
+        f.key(key(KeyCode::Right)); // PHP
+        let s = screen(&f);
+        assert!(s.contains("php-fpm socket") && s.contains("Document root") && !s.contains("Local port") && !s.contains("Health check"));
+        // SSL none: the port follows, HSTS disappears
+        for _ in 0..3 {
+            f.key(key(KeyCode::Tab)); // root, socket, SSL
+        }
+        assert!(s.contains("HSTS"));
+        f.key(key(KeyCode::Left)); // wraps from Let's Encrypt to none
+        let s = screen(&f);
+        assert!(s.contains("‹ none ›") && !s.contains("HSTS"), "{s}");
+        assert_eq!(f.txt(K::Inbound), "80");
+    }
+
+    #[test]
+    fn edit_is_prefilled_and_clears_options() {
+        use crate::nginx::template::Options;
+        let spec = Spec {
+            domain: "app.test".into(),
+            aliases: vec![],
+            inbound: 80,
+            backend: Backend::Proxy { host: "10.0.0.5".into(), port: 8080, websocket: false },
+            ssl: Ssl::None,
+            redirect_http: false,
+            access_log: None,
+            error_log: None,
+            opts: Options { max_body: Some("20m".into()), ..Options::default() },
+        };
+        let mut f = Form::new(Some(("4".into(), spec)));
+        assert!(screen(&f).contains("Edit site #4"));
+        assert_eq!(f.txt(K::Local), "10.0.0.5:8080");
+        assert_eq!(f.txt(K::MaxBody), "20m");
+        f.sel = f.fields.iter().position(|x| x.k == K::MaxBody).unwrap();
+        f.key(ctrl('u'));
+        let Outcome::Submit(site, a) = f.key(KeyCode::F(2).into()) else { panic!() };
+        assert_eq!(site.as_deref(), Some("4"));
+        assert_eq!(a.max_body.as_deref(), Some("off"), "an emptied field turns the option off");
+        assert_eq!(a.aliases, vec!["none".to_string()]);
     }
 }

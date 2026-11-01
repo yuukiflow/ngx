@@ -65,15 +65,31 @@ pub fn assign_ids(keys: &[String]) -> Vec<u32> {
 pub fn rekey(old: &str, new: &str) {
     let mut st = load();
     if let Some(id) = st.ids.remove(old) {
+        // a placeholder ID the new key got in the meantime is dropped (never reused either)
         st.ids.insert(new.to_string(), id);
         save(&st);
+        crate::ops::note_id(id, Some(old), Some(new));
     }
 }
 
 /// Forget a removed site (its ID is not reused).
 pub fn forget(key: &str) {
     let mut st = load();
-    if st.ids.remove(key).is_some() {
+    if let Some(id) = st.ids.remove(key) {
         save(&st);
+        crate::ops::note_id(id, Some(key), None);
     }
+}
+
+/// Give a key its old ID back (undo of a removal). The ID was retired, not
+/// reused, so it's still free.
+pub fn restore(key: &str, id: u32) {
+    let mut st = load();
+    if st.ids.values().any(|&v| v == id) {
+        return;
+    }
+    st.ids.insert(key.to_string(), id);
+    st.next_id = st.next_id.max(id + 1);
+    save(&st);
+    crate::ops::note_id(id, None, Some(key));
 }

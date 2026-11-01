@@ -4,7 +4,7 @@
 .SH NAME
 ngx\-edit \- Change a site\*(Aqs settings: same questions as `add`, pre\-filled with the current values
 .SH SYNOPSIS
-\fBngx\-edit\fR [\fB\-\-raw\fR] [\fB\-\-snippet\fR] [\fB\-d\fR|\fB\-\-domain\fR] [\fB\-a\fR|\fB\-\-alias\fR] [\fB\-t\fR|\fB\-\-type\fR] [\fB\-l\fR|\fB\-\-local\fR] [\fB\-\-root\fR] [\fB\-\-socket\fR] [\fB\-i\fR|\fB\-\-in\fR] [\fB\-\-ssl\fR] [\fB\-\-cert\fR] [\fB\-\-key\fR] [\fB\-\-email\fR] [\fB\-\-websocket\fR] [\fB\-\-no\-redirect\fR] [\fB\-\-staging\fR] [\fB\-\-dns\fR] [\fB\-\-dns\-credentials\fR] [\fB\-\-max\-body\fR] [\fB\-\-hsts\fR] [\fB\-\-auth\fR] [\fB\-\-rate\-limit\fR] [\fB\-\-canonical\fR] [\fB\-\-route\fR] [\fB\-y\fR|\fB\-\-yes\fR] [\fB\-\-dry\-run\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fISITE\fR> 
+\fBngx\-edit\fR [\fB\-\-raw\fR] [\fB\-\-snippet\fR] [\fB\-d\fR|\fB\-\-domain\fR] [\fB\-a\fR|\fB\-\-alias\fR] [\fB\-t\fR|\fB\-\-type\fR] [\fB\-l\fR|\fB\-\-local\fR] [\fB\-\-root\fR] [\fB\-\-socket\fR] [\fB\-i\fR|\fB\-\-in\fR] [\fB\-\-ssl\fR] [\fB\-\-cert\fR] [\fB\-\-key\fR] [\fB\-\-email\fR] [\fB\-\-websocket\fR] [\fB\-\-no\-redirect\fR] [\fB\-\-staging\fR] [\fB\-\-dns\fR] [\fB\-\-dns\-credentials\fR] [\fB\-\-max\-body\fR] [\fB\-\-hsts\fR] [\fB\-\-auth\fR] [\fB\-\-rate\-limit\fR] [\fB\-\-canonical\fR] [\fB\-\-headers\fR] [\fB\-\-health\fR] [\fB\-\-route\fR] [\fB\-y\fR|\fB\-\-yes\fR] [\fB\-\-dry\-run\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fISITE\fR> 
 .SH DESCRIPTION
 Change a site\*(Aqs settings: same questions as `add`, pre\-filled with the current values
 .SH OPTIONS
@@ -107,6 +107,22 @@ on
 .IP \(bu 2
 off
 .RE
+.TP
+\fB\-\-headers\fR \fI<on|off>\fR
+Security headers: X\-Content\-Type\-Options, X\-Frame\-Options, Referrer\-Policy (on | off)
+.br
+
+.br
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+on
+.IP \(bu 2
+off
+.RE
+.TP
+\fB\-\-health\fR \fI<PATH>\fR
+Path the backend answers health checks on, e.g. /health (`ngx check` and the status use it); `off` to remove
 .TP
 \fB\-\-route\fR \fI<PATH=PORT>\fR
 Proxy a path to another local app, repeatable: \-\-route /api=8080 \-\-route /ws=10.0.0.5:9000 (with edit: replaces the list; `\-\-route off` removes all)

@@ -1,0 +1,32 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH ngx-regen 1  "ngx-regen " 
+.SH NAME
+ngx\-regen \- Rewrite ngx\-managed sites with the current template (after an upgrade): diffs, one confirmation, one nginx \-t
+.SH SYNOPSIS
+\fBngx\-regen\fR [\fB\-\-all\fR] [\fB\-y\fR|\fB\-\-yes\fR] [\fB\-\-dry\-run\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fISITES\fR] 
+.SH DESCRIPTION
+Rewrite ngx\-managed sites with the current template (after an upgrade): diffs, one confirmation, one nginx \-t
+.SH OPTIONS
+.TP
+\fB\-\-all\fR
+Every site created by ngx
+.TP
+\fB\-y\fR, \fB\-\-yes\fR
+Don\*(Aqt ask for confirmation
+.TP
+\fB\-\-dry\-run\fR
+Show the diffs without changing anything
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+[\fISITES\fR]
+Site IDs or domains
+.SH EXTRA
+Your settings and snippets are kept; only the generated parts change.
+
+Examples:
+  sudo ngx regen \-\-all \-\-dry\-run
+  sudo ngx regen \-\-all
+  sudo ngx regen 3 4

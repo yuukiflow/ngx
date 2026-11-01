@@ -10,6 +10,31 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 /// Try to connect to the upstream. `Err` carries a short reason.
+/// HTTP health check against the backend itself: `GET <path>` with the site's
+/// Host header. Ok for 2xx/3xx. (Sandbox: `$NGX_ROOT/probe/unhealthy` lists
+/// `<domain> <status>` lines.)
+pub fn check_health(host: &str, port: u16, path: &str, domain: &str) -> Result<(), String> {
+    use std::io::{Read, Write};
+    if Env::get().sandboxed() {
+        let f = Env::get().host(Path::new("/probe/unhealthy"));
+        let list = std::fs::read_to_string(f).unwrap_or_default();
+        return match list.lines().find_map(|l| l.strip_prefix(domain).map(str::trim)) {
+            Some(code) => Err(format!("returned {code}")),
+            None => Ok(()),
+        };
+    }
+    let addr = (host, port).to_socket_addrs().map_err(|_| format!("cannot resolve {host}"))?.next().ok_or("cannot resolve")?;
+    let mut c = TcpStream::connect_timeout(&addr, Duration::from_millis(1500)).map_err(|e| e.to_string())?;
+    c.set_read_timeout(Some(Duration::from_secs(3))).ok();
+    c.set_write_timeout(Some(Duration::from_secs(3))).ok();
+    write!(c, "GET {path} HTTP/1.1\r\nHost: {domain}\r\nUser-Agent: ngx-health-check\r\nAccept: */*\r\nConnection: close\r\n\r\n").map_err(|e| e.to_string())?;
+    let mut buf = [0u8; 64];
+    let n = c.read(&mut buf).map_err(|e| if e.kind() == ErrorKind::WouldBlock || e.kind() == ErrorKind::TimedOut { "timed out".to_string() } else { e.to_string() })?;
+    let head = String::from_utf8_lossy(&buf[..n]);
+    let code: u16 = head.split_whitespace().nth(1).and_then(|c| c.parse().ok()).ok_or_else(|| "no HTTP response".to_string())?;
+    if (200..400).contains(&code) { Ok(()) } else { Err(format!("returned {code}")) }
+}
+
 pub fn check_upstream(u: &Upstream) -> Result<(), String> {
     let reason = |e: std::io::Error| match e.kind() {
         ErrorKind::ConnectionRefused => "refused connection".to_string(),

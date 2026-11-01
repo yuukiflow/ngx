@@ -72,6 +72,8 @@ Every change is a transaction (see [How it works](how-it-works.md#safe-changes))
 - **Tested before it's live.** `nginx -t -c <the nginx.conf ngx manages>` runs before the reload. If it fails, or if
   nginx can't be found to run it, every file is restored and nothing changes.
 - **Reported only once it's live.** ngx waits until nginx's new workers have taken over before saying a change is done.
+  If the reload fails even though `nginx -t` passed (a port in use…), the files are rolled back as well, so the disk
+  never holds a change nginx isn't serving.
 - **Recorded and reversible.** Every command's changes are in `ngx history` with who ran them, and `ngx undo` puts the
   files back (through the same validated path).
 - **Renewals reach nginx.** Certificates get a deploy hook that reloads nginx, so a renewed certificate is actually
@@ -92,6 +94,16 @@ That binary belongs to whoever runs the backend, often an unprivileged user, so 
   2-second limit.
 
 `pm2`, `systemctl`, `crontab` and `certbot` come from root's own `PATH`, as they would if you ran them yourself.
+
+## Notifications and the check timer
+
+- Notification URLs and email addresses are validated (no whitespace, quotes, `$`, `;`, backslashes or backticks)
+  and passed to `curl` / `sendmail` as arguments, never through a shell. The body goes through stdin.
+- The systemd timer or cron file is root-only (`0600`): notification URLs (ntfy topics, webhook tokens) are often
+  secrets. `%` is escaped for systemd and cron.
+- The timer runs as root, so ngx refuses to install it unless its own binary and every directory above it are owned
+  by root and not writable by anyone else. Otherwise a user who can replace the binary would get root.
+- Health checks connect to the app's own address and read 64 bytes of the status line, with timeouts.
 
 ## Output can't hijack your terminal
 

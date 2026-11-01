@@ -68,6 +68,12 @@ pub struct AddArgs {
     /// Redirect the aliases (e.g. www.) to the main domain (on | off)
     #[arg(long, value_name = "on|off")]
     pub canonical: Option<OnOff>,
+    /// Security headers: X-Content-Type-Options, X-Frame-Options, Referrer-Policy (on | off)
+    #[arg(long, value_name = "on|off")]
+    pub headers: Option<OnOff>,
+    /// Path the backend answers health checks on, e.g. /health (`ngx check` and the status use it); `off` to remove
+    #[arg(long, value_name = "PATH")]
+    pub health: Option<String>,
     /// Proxy a path to another local app, repeatable: --route /api=8080 --route /ws=10.0.0.5:9000 (with edit: replaces the list; `--route off` removes all)
     #[arg(long = "route", value_name = "PATH=PORT")]
     pub routes: Vec<String>,
@@ -398,7 +404,7 @@ pub(crate) fn build_spec(a: &AddArgs, existing: &[Site], cur: Option<&Spec>) -> 
         Some(c) if c.domain == domain => (c.access_log.clone(), c.error_log.clone()),
         _ => (None, None),
     };
-    let opts = build_options(a, cur.map(|c| &c.opts), &domain, &aliases, ssl != Ssl::None)?;
+    let opts = build_options(a, cur.map(|c| &c.opts), &domain, &aliases, ssl != Ssl::None, matches!(backend, Backend::Proxy { .. }))?;
     let spec = Spec { domain, aliases, inbound, backend, ssl, redirect_http, access_log, error_log, opts };
     validate::spec(&spec)?;
     check_email(email.as_deref())?;
@@ -413,13 +419,15 @@ pub(crate) fn build_spec(a: &AddArgs, existing: &[Site], cur: Option<&Spec>) -> 
     Ok((spec, email))
 }
 
-const OPTION_LABELS: [&str; 6] = [
+const OPTION_LABELS: [&str; 8] = [
     "Max upload size",
     "HSTS (browsers always use HTTPS)",
     "Password protection",
     "Rate limit per client",
     "Redirect aliases to the main domain",
     "Extra paths proxied to other apps (/api → :8080)",
+    "Security headers (nosniff, frame and referrer policy)",
+    "Health check path (ngx check calls it)",
 ];
 
 fn on_off(v: Option<OnOff>) -> Option<bool> {
@@ -429,7 +437,7 @@ fn on_off(v: Option<OnOff>) -> Option<bool> {
 /// The optional settings. Flags win; with -y the rest keep their current
 /// value; otherwise a checklist (pre-ticked with the current options) asks
 /// which to use, then their values.
-fn build_options(a: &AddArgs, cur: Option<&template::Options>, domain: &str, aliases: &[String], tls: bool) -> Result<template::Options> {
+fn build_options(a: &AddArgs, cur: Option<&template::Options>, domain: &str, aliases: &[String], tls: bool, proxy: bool) -> Result<template::Options> {
     let c = cur.cloned().unwrap_or_default();
     let off = |s: &str| matches!(s, "off" | "none" | "no");
     let flag_routes: Option<Vec<template::Route>> = if a.routes.is_empty() {
@@ -446,15 +454,17 @@ fn build_options(a: &AddArgs, cur: Option<&template::Options>, domain: &str, ali
         rate_limit: a.rate_limit.as_ref().map(|v| (!off(v)).then(|| v.clone())).unwrap_or(c.rate_limit.clone()),
         canonical: on_off(a.canonical).unwrap_or(c.canonical) && !aliases.is_empty(),
         routes: flag_routes.clone().unwrap_or(c.routes.clone()),
+        headers: on_off(a.headers).unwrap_or(c.headers),
+        health: a.health.as_ref().map(|v| (!off(v)).then(|| v.clone())).unwrap_or(c.health.clone()).filter(|_| proxy),
     };
     if a.no_questions() {
         return Ok(o);
     }
     // interactive: which options? (only the ones not given as flags)
-    let given = [a.max_body.is_some(), a.hsts.is_some(), a.auth.is_some(), a.rate_limit.is_some(), a.canonical.is_some(), flag_routes.is_some()];
-    let usable = [true, tls, true, true, !aliases.is_empty(), true];
-    let on = [o.max_body.is_some(), o.hsts, o.auth, o.rate_limit.is_some(), o.canonical, !o.routes.is_empty()];
-    let idx: Vec<usize> = (0..6).filter(|&i| usable[i] && !given[i]).collect();
+    let given = [a.max_body.is_some(), a.hsts.is_some(), a.auth.is_some(), a.rate_limit.is_some(), a.canonical.is_some(), flag_routes.is_some(), a.headers.is_some(), a.health.is_some()];
+    let usable = [true, tls, true, true, !aliases.is_empty(), true, true, proxy];
+    let on = [o.max_body.is_some(), o.hsts, o.auth, o.rate_limit.is_some(), o.canonical, !o.routes.is_empty(), o.headers, o.health.is_some()];
+    let idx: Vec<usize> = (0..8).filter(|&i| usable[i] && !given[i]).collect();
     if idx.is_empty() {
         return Ok(o);
     }
@@ -491,6 +501,17 @@ fn build_options(a: &AddArgs, cur: Option<&template::Options>, domain: &str, ali
     }
     if !given[4] {
         o.canonical = has(4);
+    }
+    if !given[6] {
+        o.headers = has(6);
+    }
+    if !given[7] {
+        o.health = if has(7) {
+            let d = o.health.clone().unwrap_or_else(|| "/health".into());
+            Some(Text::new("Health check path:").with_default(&d).with_help_message("the backend should answer 2xx/3xx; ngx check reports anything else").with_validator(|s: &str| Ok(if validate::health_path(s.trim()) { Validation::Valid } else { Validation::Invalid("a path like /health".into()) })).prompt()?.trim().to_string())
+        } else {
+            None
+        };
     }
     if !given[5] {
         o.routes = if has(5) {
@@ -601,8 +622,7 @@ pub fn add(a: AddArgs) -> Result<()> {
     print!("{preview}");
     render::print(&[vec![render::seg("─".repeat(60), Tone::Dim)]]);
     if !confirm("Create and enable this site?", true, a.yes && !a.review)? {
-        println!("aborted");
-        return Ok(());
+        return Err(Aborted.into());
     }
     prepare_dirs(&spec, a.dry_run)?;
 

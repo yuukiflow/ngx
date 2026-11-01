@@ -63,6 +63,17 @@ must be absolute and can't contain spaces, quotes or `; { } $ #`; move the files
 System directories and whole home directories can't be document roots; use a dedicated directory such as
 `/var/www/<site>`.
 
+## "reload failed, changes rolled back"
+
+`nginx -t` accepted the change, but nginx couldn't switch to it, most often because the new public port is already
+used by another program (`ss -ltnp | grep :<port>`), or a log file can't be opened. Everything was put back and nginx
+reloaded with the previous configuration. Fix the cause and run the command again.
+
+## A site is down with "health check /health returned …"
+
+The app answers, but its health endpoint says it's not well (`503`), or doesn't answer in 3 seconds. Look at the app's
+own logs. To stop checking: `sudo ngx edit <site> -y --health off`.
+
 ## "nginx did not pick up the new configuration within 5s"
 
 nginx accepted the config (`nginx -t` passed) but the reload didn't complete. Look at the end of
@@ -166,7 +177,7 @@ Run `sudo certbot renew --dry-run` to see the error (usually DNS or port 80; see
 
 ## `ngx edit` refuses a site
 
-- *"also defines …"*: the file contains several sites. Split them into separate files, or use `ngx edit <site> --raw`.
+- *"also defines …"*: the file contains several sites. Split it with `sudo ngx split <site>`, or use `ngx edit <site> --raw`.
 - *"not a setup ngx can generate"*: a variable upstream, redirect-only site, or something other than a plain
   proxy/static/PHP site. Use `--raw`.
 

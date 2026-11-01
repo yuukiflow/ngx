@@ -20,22 +20,28 @@ mod add;
 mod auth;
 mod cert;
 mod check;
+mod convert;
 mod edit;
 mod history;
 mod layout;
 mod manage;
 mod misc;
+mod regen;
+mod split;
 mod view;
 
 pub use add::*;
 pub use auth::*;
 pub use cert::*;
 pub use check::*;
+pub(crate) use convert::*;
 pub use edit::*;
 pub use history::*;
 pub use layout::*;
 pub use manage::*;
 pub use misc::*;
+pub use regen::*;
+pub use split::*;
 pub use view::*;
 
 pub(crate) fn ok(msg: &str) {
@@ -48,3 +54,15 @@ pub(crate) fn confirm(q: &str, default: bool, yes: bool) -> Result<bool> {
     }
     Ok(Confirm::new(q).with_default(default).prompt()?)
 }
+
+/// The user answered "no" to the final confirmation: nothing was changed.
+#[derive(Debug)]
+pub struct Aborted;
+
+impl std::fmt::Display for Aborted {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("aborted — nothing changed")
+    }
+}
+
+impl std::error::Error for Aborted {}

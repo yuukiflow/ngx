@@ -320,14 +320,31 @@ fn server_block(d: &Directive, ups: &HashMap<String, String>) -> ServerBlock {
     }
 }
 
-/// Group server blocks of one file into sites.
-pub fn extract(dirs: &[Directive]) -> Vec<(String, Vec<String>, Vec<ServerBlock>, usize)> {
-    let mut ups = HashMap::new();
-    for u in dirs.iter().filter(|d| d.name == "upstream") {
-        if let (Some(name), Some(server)) = (u.arg(0), u.first_arg("server")) {
-            ups.insert(name.to_string(), server.to_string());
+/// Named `upstream { }` blocks (first server of each), at top level or in `http { }`.
+fn upstreams_in(dirs: &[Directive], out: &mut HashMap<String, String>) {
+    for d in dirs {
+        match d.name.as_str() {
+            "upstream" => {
+                if let (Some(name), Some(server)) = (d.arg(0), d.first_arg("server")) {
+                    out.insert(name.to_string(), server.to_string());
+                }
+            }
+            "http" => upstreams_in(d.block.as_deref().unwrap_or(&[]), out),
+            _ => {}
         }
     }
+}
+
+/// Group server blocks of one file into sites.
+pub fn extract(dirs: &[Directive]) -> Vec<(String, Vec<String>, Vec<ServerBlock>, usize)> {
+    extract_with(dirs, &HashMap::new())
+}
+
+/// Like `extract`, also resolving upstreams defined in other files (nginx shares
+/// them across the whole `http` context).
+pub fn extract_with(dirs: &[Directive], global: &HashMap<String, String>) -> Vec<(String, Vec<String>, Vec<ServerBlock>, usize)> {
+    let mut ups = global.clone();
+    upstreams_in(dirs, &mut ups);
     // servers may be at top level (sites-enabled) or inside http {} (full configs)
     let mut servers = Vec::new();
     for d in dirs {
@@ -428,6 +445,10 @@ fn entries() -> Vec<Entry> {
 pub const MANAGED_MARKER: &str = "# managed by ngx";
 
 pub fn parse_file(config: &Path, file: &Path, enabled: bool, conf_d: bool) -> Vec<Site> {
+    parse_file_with(config, file, enabled, conf_d, &HashMap::new())
+}
+
+fn parse_file_with(config: &Path, file: &Path, enabled: bool, conf_d: bool, global: &HashMap<String, String>) -> Vec<Site> {
     let env = Env::get();
     let host = env.host(file);
     let base = file
@@ -459,7 +480,7 @@ pub fn parse_file(config: &Path, file: &Path, enabled: bool, conf_d: bool) -> Ve
     };
     let managed = src.lines().take(3).any(|l| l.starts_with(MANAGED_MARKER));
     match parser::parse(&src) {
-        Ok(dirs) => extract(&dirs)
+        Ok(dirs) => extract_with(&dirs, global)
             .into_iter()
             .map(|(d, a, b, m)| mk(d, a, b, m, None, managed))
             .collect(),
@@ -472,9 +493,18 @@ pub fn parse_file(config: &Path, file: &Path, enabled: bool, conf_d: bool) -> Ve
 
 /// Load every site (enabled and disabled) with stable IDs assigned.
 pub fn load_all() -> Vec<Site> {
-    let mut sites: Vec<Site> = entries()
+    let env = Env::get();
+    let entries = entries();
+    // upstreams are shared by everything nginx loads: nginx.conf and the enabled files
+    let mut global = HashMap::new();
+    for f in std::iter::once(env.nginx_conf()).chain(entries.iter().filter(|e| e.enabled).map(|e| e.file.clone())) {
+        if let Ok(dirs) = std::fs::read_to_string(env.host(&f)).map_err(|_| ()).and_then(|t| parser::parse(&t).map_err(|_| ())) {
+            upstreams_in(&dirs, &mut global);
+        }
+    }
+    let mut sites: Vec<Site> = entries
         .iter()
-        .flat_map(|e| parse_file(&e.config, &e.file, e.enabled, e.conf_d))
+        .flat_map(|e| parse_file_with(&e.config, &e.file, e.enabled, e.conf_d, &global))
         .collect();
     let keys: Vec<String> = sites.iter().map(|s| s.key.clone()).collect();
     let ids = crate::state::assign_ids(&keys);

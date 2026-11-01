@@ -33,6 +33,7 @@ The certificates are generated relative to the current date, so rerun the script
 |---|---|---|
 | Unit tests: parser, site grouping, templates, validation and injection attempts, history ordering, renewal configs, log and `nginx -t` parsing, password hashing | `src/**` | `cargo test` |
 | Snapshot tests of `ls`, `show`, `check` and a generated config, against a fixed sandbox; `add` → `history` → `undo`; rejected injections | `tests/cli.rs`, `tests/snapshots/` | `cargo test --test cli` |
+| Dashboard: the form (typing, validation, visible fields, what a submit produces) and the log viewer (following, search, problems filter, rotation, escape sequences), rendered with ratatui's `TestBackend` | `src/tui/form.rs`, `src/tui/logview.rs` | `cargo test tui` |
 | End-to-end with a real nginx on Arch, Debian and Ubuntu | `tests/e2e/` | see below |
 | Fuzzing | `fuzz/` | see below |
 
@@ -46,7 +47,10 @@ check prints `PASS`/`FAIL`, and the script fails if any did): `init`, `add` for 
 files returning 403, rejected injection attempts, upload limits (413), rate limiting (429), extra routes, the alias
 redirect, password protection (401/200 with a SHA-512 crypt hash, file mode), snippets (live, kept across
 regeneration, broken ones rejected), HTTPS with an existing certificate and HSTS, renaming, rollback of a broken
-`--raw` edit, `history`/`undo`, `check` exit codes, `nginx -t` error mapping, the change lock, and `disable`.
+`--raw` edit, `history`/`undo`, `check` exit codes, `nginx -t` error mapping, the change lock, `disable`, HTTP/2 and
+security headers, rollback of a reload that fails (busy port), IDs after undoing a rename, health checks,
+converting a hand-written site (options, routes, snippet), `split` and `regen`, notifications (plain and JSON, no
+repeats), the check timer, and completions.
 
 ```
 cargo build --release --target x86_64-unknown-linux-musl     # static, runs in any image
@@ -75,7 +79,13 @@ cargo +nightly fuzz run spec corpus/spec -- -max_total_time=300
 `.github/workflows/ci.yml` runs clippy (warnings are errors), the tests, a check that `man/` is up to date, the
 end-to-end test on the three distributions, and each fuzzer for two minutes, on every push and pull request and
 weekly. Pushing a tag `v*` runs `.github/workflows/release.yml`: static `x86_64` and `aarch64` musl binaries, packaged
-with the man pages, published as a GitHub release with `SHA256SUMS` (used by `scripts/install.sh`).
+with the man pages and completions, plus `.deb` packages (cargo-deb, metadata in `Cargo.toml`), published as a GitHub
+release with `SHA256SUMS` (used by `scripts/install.sh`). The AUR `PKGBUILD` is in `packaging/aur/` (see its README).
+
+## Regenerating the man pages and completions
+
+`cargo run -- man man` writes `man/*.1` and `completions/` (bash, zsh, fish) from the clap definitions; CI fails if
+they're out of date.
 
 ## Environment variables
 
@@ -94,7 +104,7 @@ with the man pages, published as a GitHub release with `SHA256SUMS` (used by `sc
 | File | Responsibility |
 |---|---|
 | `src/main.rs` | CLI definitions (clap), man page generation; everything else is the `ngx` library (`src/lib.rs`) |
-| `src/cmd/` | One file per command group: `add` (and the questions shared with edit), `edit` (+ `--raw`, `--snippet`), `manage` (enable/disable/rm), `cert`, `auth`, `check`, `history` (+ undo), `view` (ls/show), `misc` (logs/test/reload/doctor), `layout` (init) |
+| `src/cmd/` | One file per command group: `add` (and the questions shared with edit), `edit` (+ `--raw`, `--snippet`), `convert` (hand-written → managed), `regen`, `split`, `manage` (enable/disable/rm), `cert`, `auth`, `check` (+ notifications, timer), `history` (+ undo), `view` (ls/show), `misc` (logs/test/reload/doctor), `layout` (init) |
 | `src/tui/` | Dashboard (ratatui): `mod.rs` (list, details, actions), `form.rs` (add/edit form), `logview.rs` (log viewer) |
 | `src/env.rs` | Paths, sandbox mapping, root check and change lock, helpers to run commands |
 | `src/nginx/parser.rs` | Config lexer and parser → directive tree with line numbers |

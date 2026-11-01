@@ -1,7 +1,33 @@
 [package]
 name = "ngx"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
+description = "Manage nginx sites and Let's Encrypt certificates: status table, details, safe changes, dashboard"
+repository = "https://github.com/yuukiflow/ngx"
+readme = "README.md"
+keywords = ["nginx", "letsencrypt", "certbot", "tui", "sysadmin"]
+categories = ["command-line-utilities"]
+
+[package.metadata.deb]
+maintainer = "yuukiflow <yuukiflow@users.noreply.github.com>"
+section = "admin"
+priority = "optional"
+depends = "nginx | nginx-core | nginx-full | nginx-light | nginx-extras"
+recommends = "certbot, curl"
+extended-description = """\
+ngx lists every nginx site with its status, certificate expiry and renewal, \
+explains why a site is down, creates and edits sites by asking questions \
+(never by hand-editing nginx files), validates every change with nginx -t, \
+rolls back on failure, keeps a change history with undo, and has a \
+full-screen dashboard."""
+assets = [
+    ["target/release/ngx", "usr/bin/", "755"],
+    ["man/*.1", "usr/share/man/man1/", "644"],
+    ["completions/ngx.bash", "usr/share/bash-completion/completions/ngx", "644"],
+    ["completions/_ngx", "usr/share/zsh/vendor-completions/", "644"],
+    ["completions/ngx.fish", "usr/share/fish/vendor_completions.d/", "644"],
+    ["README.md", "usr/share/doc/ngx/", "644"],
+]
 
 [dependencies]
 anyhow = "1.0.104"
@@ -17,3 +43,4 @@ unicode-width = "0.2.3"
 x509-parser = "0.18.1"
 tempfile = "3.27.0"
 sha-crypt = "0.6.0"
+clap_complete = "4.6.11"

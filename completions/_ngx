@@ -1,0 +1,1043 @@
+#compdef ngx
+
+autoload -U is-at-least
+
+_ngx() {
+    typeset -A opt_args
+    typeset -a _arguments_options
+    local ret=1
+
+    if is-at-least 5.2; then
+        _arguments_options=(-s -S -C)
+    else
+        _arguments_options=(-s -C)
+    fi
+
+    local context curcontext="$curcontext" state line
+    _arguments "${_arguments_options[@]}" : \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'-V[Print version]' \
+'--version[Print version]' \
+":: :_ngx_commands" \
+"*::: :->ngx" \
+&& ret=0
+    case $state in
+    (ngx)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:ngx-command-$line[1]:"
+        case $line[1] in
+            (ls)
+_arguments "${_arguments_options[@]}" : \
+'-a[Include disabled sites]' \
+'--all[Include disabled sites]' \
+'--json[Print JSON instead of a table]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(show)
+_arguments "${_arguments_options[@]}" : \
+'--json[Print JSON instead of the detail view]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':site -- Site ID (from `ngx ls`) or any of its domain names:_default' \
+&& ret=0
+;;
+(add)
+_arguments "${_arguments_options[@]}" : \
+'-d+[Primary domain, e.g. app.example.com (with edit\: the new domain)]:DOMAIN:_default' \
+'--domain=[Primary domain, e.g. app.example.com (with edit\: the new domain)]:DOMAIN:_default' \
+'*-a+[Extra server name, repeatable\: -a www.example.com -a example.org (with edit\: replaces the list)]:NAME:_default' \
+'*--alias=[Extra server name, repeatable\: -a www.example.com -a example.org (with edit\: replaces the list)]:NAME:_default' \
+'-t+[Site type\: proxy | static | php]:TYPE:_default' \
+'--type=[Site type\: proxy | static | php]:TYPE:_default' \
+'-l+[Upstream for a proxy site\: PORT (on 127.0.0.1) or HOST\:PORT]:PORT|HOST:PORT:_default' \
+'--local=[Upstream for a proxy site\: PORT (on 127.0.0.1) or HOST\:PORT]:PORT|HOST:PORT:_default' \
+'--root=[Document root for static / php sites (default /var/www/<domain>, created if missing)]:DIR:_default' \
+'--socket=[php-fpm socket for php sites (default\: the one found in /run/php)]:PATH:_default' \
+'-i+[Public port (default 443 with SSL, 80 without)]:PORT:_default' \
+'--in=[Public port (default 443 with SSL, 80 without)]:PORT:_default' \
+'--ssl=[SSL\: letsencrypt | existing | none]:MODE:_default' \
+'--cert=[Certificate (fullchain) path, with --ssl existing]:PATH:_default' \
+'--key=[Private key path, with --ssl existing]:PATH:_default' \
+'--email=[Email for the Let'\''s Encrypt account (asked once if none exists). Let'\''s Encrypt no longer sends expiry emails\: use \`ngx check\` to monitor]:EMAIL:_default' \
+'--dns=[Let'\''s Encrypt with the DNS challenge through this certbot plugin (cloudflare, route53, digitalocean…)\: wildcards, no port 80 needed]:PLUGIN:_default' \
+'--dns-credentials=[Credentials file for the DNS plugin (e.g. /root/.secrets/cloudflare.ini, mode 600)]:FILE:_default' \
+'--max-body=[Maximum upload (request body) size, e.g. 50m; \`off\` for nginx'\''s default (1m)]:SIZE:_default' \
+'--hsts=[HSTS\: tell browsers to always use HTTPS for this domain (on | off)]:on|off:(on off)' \
+'--auth=[Password-protect the site (users\: \`ngx auth add <site> <user>\`) (on | off)]:on|off:(on off)' \
+'--rate-limit=[Limit requests per client, e.g. 10r/s or 300r/m; \`off\` to remove]:RATE:_default' \
+'--canonical=[Redirect the aliases (e.g. www.) to the main domain (on | off)]:on|off:(on off)' \
+'--headers=[Security headers\: X-Content-Type-Options, X-Frame-Options, Referrer-Policy (on | off)]:on|off:(on off)' \
+'--health=[Path the backend answers health checks on, e.g. /health (\`ngx check\` and the status use it); \`off\` to remove]:PATH:_default' \
+'*--route=[Proxy a path to another local app, repeatable\: --route /api=8080 --route /ws=10.0.0.5\:9000 (with edit\: replaces the list; \`--route off\` removes all)]:PATH=PORT:_default' \
+'--websocket[Proxy WebSocket upgrades]' \
+'--no-redirect[Don'\''t redirect HTTP (port 80) to HTTPS]' \
+'--staging[Use the Let'\''s Encrypt staging server (for testing; certificates are not trusted)]' \
+'-y[No prompts\: use flags, and current values / defaults for the rest]' \
+'--yes[No prompts\: use flags, and current values / defaults for the rest]' \
+'--dry-run[Show the config and what would change without touching anything]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(edit)
+_arguments "${_arguments_options[@]}" : \
+'--snippet=[Edit your own directives for the site in \$EDITOR\: ngx.d/<domain>/<NAME>.conf, kept when ngx regenerates the config]:NAME:_default' \
+'-d+[Primary domain, e.g. app.example.com (with edit\: the new domain)]:DOMAIN:_default' \
+'--domain=[Primary domain, e.g. app.example.com (with edit\: the new domain)]:DOMAIN:_default' \
+'*-a+[Extra server name, repeatable\: -a www.example.com -a example.org (with edit\: replaces the list)]:NAME:_default' \
+'*--alias=[Extra server name, repeatable\: -a www.example.com -a example.org (with edit\: replaces the list)]:NAME:_default' \
+'-t+[Site type\: proxy | static | php]:TYPE:_default' \
+'--type=[Site type\: proxy | static | php]:TYPE:_default' \
+'-l+[Upstream for a proxy site\: PORT (on 127.0.0.1) or HOST\:PORT]:PORT|HOST:PORT:_default' \
+'--local=[Upstream for a proxy site\: PORT (on 127.0.0.1) or HOST\:PORT]:PORT|HOST:PORT:_default' \
+'--root=[Document root for static / php sites (default /var/www/<domain>, created if missing)]:DIR:_default' \
+'--socket=[php-fpm socket for php sites (default\: the one found in /run/php)]:PATH:_default' \
+'-i+[Public port (default 443 with SSL, 80 without)]:PORT:_default' \
+'--in=[Public port (default 443 with SSL, 80 without)]:PORT:_default' \
+'--ssl=[SSL\: letsencrypt | existing | none]:MODE:_default' \
+'--cert=[Certificate (fullchain) path, with --ssl existing]:PATH:_default' \
+'--key=[Private key path, with --ssl existing]:PATH:_default' \
+'--email=[Email for the Let'\''s Encrypt account (asked once if none exists). Let'\''s Encrypt no longer sends expiry emails\: use \`ngx check\` to monitor]:EMAIL:_default' \
+'--dns=[Let'\''s Encrypt with the DNS challenge through this certbot plugin (cloudflare, route53, digitalocean…)\: wildcards, no port 80 needed]:PLUGIN:_default' \
+'--dns-credentials=[Credentials file for the DNS plugin (e.g. /root/.secrets/cloudflare.ini, mode 600)]:FILE:_default' \
+'--max-body=[Maximum upload (request body) size, e.g. 50m; \`off\` for nginx'\''s default (1m)]:SIZE:_default' \
+'--hsts=[HSTS\: tell browsers to always use HTTPS for this domain (on | off)]:on|off:(on off)' \
+'--auth=[Password-protect the site (users\: \`ngx auth add <site> <user>\`) (on | off)]:on|off:(on off)' \
+'--rate-limit=[Limit requests per client, e.g. 10r/s or 300r/m; \`off\` to remove]:RATE:_default' \
+'--canonical=[Redirect the aliases (e.g. www.) to the main domain (on | off)]:on|off:(on off)' \
+'--headers=[Security headers\: X-Content-Type-Options, X-Frame-Options, Referrer-Policy (on | off)]:on|off:(on off)' \
+'--health=[Path the backend answers health checks on, e.g. /health (\`ngx check\` and the status use it); \`off\` to remove]:PATH:_default' \
+'*--route=[Proxy a path to another local app, repeatable\: --route /api=8080 --route /ws=10.0.0.5\:9000 (with edit\: replaces the list; \`--route off\` removes all)]:PATH=PORT:_default' \
+'(--snippet)--raw[Open the raw nginx file in \$EDITOR (validated with nginx -t before it is applied)]' \
+'--websocket[Proxy WebSocket upgrades]' \
+'--no-redirect[Don'\''t redirect HTTP (port 80) to HTTPS]' \
+'--staging[Use the Let'\''s Encrypt staging server (for testing; certificates are not trusted)]' \
+'-y[No prompts\: use flags, and current values / defaults for the rest]' \
+'--yes[No prompts\: use flags, and current values / defaults for the rest]' \
+'--dry-run[Show the config and what would change without touching anything]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':site -- Site ID (from `ngx ls`) or any of its domain names:_default' \
+&& ret=0
+;;
+(rm)
+_arguments "${_arguments_options[@]}" : \
+'--delete-cert[Also delete its certbot certificate (\`certbot delete\`)]' \
+'-y[Don'\''t ask for confirmation]' \
+'--yes[Don'\''t ask for confirmation]' \
+'--dry-run[Show what would change without touching anything]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':site -- Site ID (from `ngx ls`) or any of its domain names:_default' \
+&& ret=0
+;;
+(enable)
+_arguments "${_arguments_options[@]}" : \
+'--dry-run[Show what would change without touching anything]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':site -- Site ID (from `ngx ls`) or any of its domain names:_default' \
+&& ret=0
+;;
+(disable)
+_arguments "${_arguments_options[@]}" : \
+'--dry-run[Show what would change without touching anything]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':site -- Site ID (from `ngx ls`) or any of its domain names:_default' \
+&& ret=0
+;;
+(cert)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+":: :_ngx__subcmd__cert_commands" \
+"*::: :->cert" \
+&& ret=0
+
+    case $state in
+    (cert)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:ngx-cert-command-$line[1]:"
+        case $line[1] in
+            (info)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+':site -- Site ID or domain:_default' \
+&& ret=0
+;;
+(issue)
+_arguments "${_arguments_options[@]}" : \
+'--email=[Email for the Let'\''s Encrypt account (if none exists yet)]:EMAIL:_default' \
+'--dns=[Use the DNS challenge with this certbot DNS plugin (e.g. cloudflare)\: wildcards, no port 80 needed]:PLUGIN:_default' \
+'--dns-credentials=[Credentials file for the DNS plugin (e.g. /root/.secrets/cloudflare.ini, mode 600)]:FILE:_default' \
+'--staging[Use the Let'\''s Encrypt staging server]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':site -- Site ID or domain:_default' \
+&& ret=0
+;;
+(renew)
+_arguments "${_arguments_options[@]}" : \
+'--force[Renew even if it is not close to expiry]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':site -- Site ID or domain:_default' \
+&& ret=0
+;;
+(auto)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+':site -- Site ID or domain:_default' \
+':state:(on off)' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_ngx__subcmd__cert__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:ngx-cert-help-command-$line[1]:"
+        case $line[1] in
+            (info)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(issue)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(renew)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(auto)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
+(logs)
+_arguments "${_arguments_options[@]}" : \
+'-n+[Number of lines to show]:LINES:_default' \
+'--lines=[Number of lines to show]:LINES:_default' \
+'-e[Error log instead of access log]' \
+'--error[Error log instead of access log]' \
+'-f[Keep following new lines (Ctrl-C to stop)]' \
+'--follow[Keep following new lines (Ctrl-C to stop)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':site -- Site ID (from `ngx ls`) or any of its domain names:_default' \
+&& ret=0
+;;
+(test)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(reload)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(doctor)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(regen)
+_arguments "${_arguments_options[@]}" : \
+'()--all[Every site created by ngx]' \
+'-y[Don'\''t ask for confirmation]' \
+'--yes[Don'\''t ask for confirmation]' \
+'--dry-run[Show the diffs without changing anything]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'*::sites -- Site IDs or domains:_default' \
+&& ret=0
+;;
+(split)
+_arguments "${_arguments_options[@]}" : \
+'-y[Don'\''t ask for confirmation]' \
+'--yes[Don'\''t ask for confirmation]' \
+'--dry-run[Show the plan without changing anything]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':site -- Site ID (from `ngx ls`) or any of its domain names:_default' \
+&& ret=0
+;;
+(auth)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+":: :_ngx__subcmd__auth_commands" \
+"*::: :->auth" \
+&& ret=0
+
+    case $state in
+    (auth)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:ngx-auth-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+':site -- Site ID or domain:_default' \
+&& ret=0
+;;
+(add)
+_arguments "${_arguments_options[@]}" : \
+'--password-stdin[Read the password from the first line of stdin]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':site -- Site ID or domain:_default' \
+':user:_default' \
+&& ret=0
+;;
+(rm)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+':site -- Site ID or domain:_default' \
+':user:_default' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_ngx__subcmd__auth__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:ngx-auth-help-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(add)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(rm)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
+(check)
+_arguments "${_arguments_options[@]}" : \
+'--max-5xx=[Warn when more than this percentage of a site'\''s requests failed with 5xx in the last 24h]:PERCENT:_default' \
+'*--notify=[POST a plain-text report to this URL (ntfy-style\: Title/Priority headers). Repeatable]:URL:_default' \
+'*--notify-json=[POST a JSON report ({"text", "content", "status", "problems"}\: Slack, Mattermost, Discord…). Repeatable]:URL:_default' \
+'*--mail=[Email the report through the local sendmail. Repeatable]:ADDRESS:_default' \
+'--every=[How often the timer runs\: 15m, 30m, 1h, 6h, 1d…]:INTERVAL:_default' \
+'--json[Print JSON]' \
+'-q[No output, only the exit status]' \
+'--quiet[No output, only the exit status]' \
+'--always[Notify on every run with problems (default\: only when the problems change, and once when all is resolved)]' \
+'(--remove-timer)--install-timer[Install a systemd timer (or cron job) that runs this check with the same options]' \
+'--remove-timer[Remove the timer installed with --install-timer]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(history)
+_arguments "${_arguments_options[@]}" : \
+'-n+[Show at most this many entries]:LIMIT:_default' \
+'--limit=[Show at most this many entries]:LIMIT:_default' \
+'--json[Print JSON]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'::site -- Site ID or domain:_default' \
+&& ret=0
+;;
+(undo)
+_arguments "${_arguments_options[@]}" : \
+'-y[Don'\''t ask for confirmation]' \
+'--yes[Don'\''t ask for confirmation]' \
+'--dry-run[Show what would be restored without changing anything]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'::id -- Change ID from `ngx history`:_default' \
+&& ret=0
+;;
+(init)
+_arguments "${_arguments_options[@]}" : \
+'-y[Don'\''t ask for confirmation]' \
+'--yes[Don'\''t ask for confirmation]' \
+'--dry-run[Show what would change without touching anything]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(tui)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(completions)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+':shell:(bash elvish fish powershell zsh)' \
+&& ret=0
+;;
+(man)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+'::dir:_files' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_ngx__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:ngx-help-command-$line[1]:"
+        case $line[1] in
+            (ls)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(show)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(add)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(edit)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(rm)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(enable)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(disable)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(cert)
+_arguments "${_arguments_options[@]}" : \
+":: :_ngx__subcmd__help__subcmd__cert_commands" \
+"*::: :->cert" \
+&& ret=0
+
+    case $state in
+    (cert)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:ngx-help-cert-command-$line[1]:"
+        case $line[1] in
+            (info)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(issue)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(renew)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(auto)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(logs)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(test)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(reload)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(doctor)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(regen)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(split)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(auth)
+_arguments "${_arguments_options[@]}" : \
+":: :_ngx__subcmd__help__subcmd__auth_commands" \
+"*::: :->auth" \
+&& ret=0
+
+    case $state in
+    (auth)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:ngx-help-auth-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(add)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(rm)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(check)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(history)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(undo)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(init)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(tui)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(completions)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(man)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+}
+
+(( $+functions[_ngx_commands] )) ||
+_ngx_commands() {
+    local commands; commands=(
+'ls:List sites with status, SSL, renewal, ports and errors' \
+'show:Show everything about one site\: SSL, routing, backend process, locations, logs, traffic' \
+'add:Create and enable a new site (asks for anything not given as a flag)' \
+'edit:Change a site'\''s settings\: same questions as \`add\`, pre-filled with the current values' \
+'rm:Remove a site'\''s configuration (a backup is kept)' \
+'enable:Enable a disabled site' \
+'disable:Disable a site without deleting it (\`ngx enable\` brings it back with the same ID)' \
+'cert:Certificates\: info, issue, renew, auto-renewal on/off (wraps certbot)' \
+'logs:Show a site'\''s access log (or error log with -e)' \
+'test:Validate the nginx configuration (\`nginx -t\`)' \
+'reload:Validate, then reload nginx (waits until the new config is live)' \
+'doctor:Check the environment\: nginx, certbot, layout, renewal timer, permissions' \
+'regen:Rewrite ngx-managed sites with the current template (after an upgrade)\: diffs, one confirmation, one nginx -t' \
+'split:Split a file that defines several sites into one file per site (so each can be edited on its own)' \
+'auth:Users of password-protected sites (basic auth)' \
+'check:Check every site for monitoring/cron\: down sites, expired or expiring certificates, renewal problems' \
+'history:List recorded changes (newest first), optionally only those touching one site' \
+'undo:Undo a change\: restore every file it touched (default\: the latest change)' \
+'init:Create sites-available/ + sites-enabled/ and include them from nginx.conf (Arch, RHEL, …)' \
+'tui:Full-screen dashboard (also the default when no command is given)' \
+'completions:Print a shell completion script (bash, zsh, fish, elvish, powershell)' \
+'man:Generate man pages into a directory' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'ngx commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__add_commands] )) ||
+_ngx__subcmd__add_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx add commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__auth_commands] )) ||
+_ngx__subcmd__auth_commands() {
+    local commands; commands=(
+'list:List the users who can log in' \
+'add:Add a user, or change their password (asked twice, or read from stdin with --password-stdin)' \
+'rm:Remove a user' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'ngx auth commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__auth__subcmd__add_commands] )) ||
+_ngx__subcmd__auth__subcmd__add_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx auth add commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__auth__subcmd__help_commands] )) ||
+_ngx__subcmd__auth__subcmd__help_commands() {
+    local commands; commands=(
+'list:List the users who can log in' \
+'add:Add a user, or change their password (asked twice, or read from stdin with --password-stdin)' \
+'rm:Remove a user' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'ngx auth help commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__auth__subcmd__help__subcmd__add_commands] )) ||
+_ngx__subcmd__auth__subcmd__help__subcmd__add_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx auth help add commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__auth__subcmd__help__subcmd__help_commands] )) ||
+_ngx__subcmd__auth__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx auth help help commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__auth__subcmd__help__subcmd__list_commands] )) ||
+_ngx__subcmd__auth__subcmd__help__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx auth help list commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__auth__subcmd__help__subcmd__rm_commands] )) ||
+_ngx__subcmd__auth__subcmd__help__subcmd__rm_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx auth help rm commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__auth__subcmd__list_commands] )) ||
+_ngx__subcmd__auth__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx auth list commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__auth__subcmd__rm_commands] )) ||
+_ngx__subcmd__auth__subcmd__rm_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx auth rm commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__cert_commands] )) ||
+_ngx__subcmd__cert_commands() {
+    local commands; commands=(
+'info:Show certificate details\: expiry, issuer, covered names, renewal' \
+'issue:Obtain a Let'\''s Encrypt certificate for a site and switch it to HTTPS' \
+'renew:Renew a site'\''s certificate now and reload nginx' \
+'auto:Turn automatic renewal on or off (sets \`autorenew\` in the certbot renewal config)' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'ngx cert commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__cert__subcmd__auto_commands] )) ||
+_ngx__subcmd__cert__subcmd__auto_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx cert auto commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__cert__subcmd__help_commands] )) ||
+_ngx__subcmd__cert__subcmd__help_commands() {
+    local commands; commands=(
+'info:Show certificate details\: expiry, issuer, covered names, renewal' \
+'issue:Obtain a Let'\''s Encrypt certificate for a site and switch it to HTTPS' \
+'renew:Renew a site'\''s certificate now and reload nginx' \
+'auto:Turn automatic renewal on or off (sets \`autorenew\` in the certbot renewal config)' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'ngx cert help commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__cert__subcmd__help__subcmd__auto_commands] )) ||
+_ngx__subcmd__cert__subcmd__help__subcmd__auto_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx cert help auto commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__cert__subcmd__help__subcmd__help_commands] )) ||
+_ngx__subcmd__cert__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx cert help help commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__cert__subcmd__help__subcmd__info_commands] )) ||
+_ngx__subcmd__cert__subcmd__help__subcmd__info_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx cert help info commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__cert__subcmd__help__subcmd__issue_commands] )) ||
+_ngx__subcmd__cert__subcmd__help__subcmd__issue_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx cert help issue commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__cert__subcmd__help__subcmd__renew_commands] )) ||
+_ngx__subcmd__cert__subcmd__help__subcmd__renew_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx cert help renew commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__cert__subcmd__info_commands] )) ||
+_ngx__subcmd__cert__subcmd__info_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx cert info commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__cert__subcmd__issue_commands] )) ||
+_ngx__subcmd__cert__subcmd__issue_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx cert issue commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__cert__subcmd__renew_commands] )) ||
+_ngx__subcmd__cert__subcmd__renew_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx cert renew commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__check_commands] )) ||
+_ngx__subcmd__check_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx check commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__completions_commands] )) ||
+_ngx__subcmd__completions_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx completions commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__disable_commands] )) ||
+_ngx__subcmd__disable_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx disable commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__doctor_commands] )) ||
+_ngx__subcmd__doctor_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx doctor commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__edit_commands] )) ||
+_ngx__subcmd__edit_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx edit commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__enable_commands] )) ||
+_ngx__subcmd__enable_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx enable commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help_commands] )) ||
+_ngx__subcmd__help_commands() {
+    local commands; commands=(
+'ls:List sites with status, SSL, renewal, ports and errors' \
+'show:Show everything about one site\: SSL, routing, backend process, locations, logs, traffic' \
+'add:Create and enable a new site (asks for anything not given as a flag)' \
+'edit:Change a site'\''s settings\: same questions as \`add\`, pre-filled with the current values' \
+'rm:Remove a site'\''s configuration (a backup is kept)' \
+'enable:Enable a disabled site' \
+'disable:Disable a site without deleting it (\`ngx enable\` brings it back with the same ID)' \
+'cert:Certificates\: info, issue, renew, auto-renewal on/off (wraps certbot)' \
+'logs:Show a site'\''s access log (or error log with -e)' \
+'test:Validate the nginx configuration (\`nginx -t\`)' \
+'reload:Validate, then reload nginx (waits until the new config is live)' \
+'doctor:Check the environment\: nginx, certbot, layout, renewal timer, permissions' \
+'regen:Rewrite ngx-managed sites with the current template (after an upgrade)\: diffs, one confirmation, one nginx -t' \
+'split:Split a file that defines several sites into one file per site (so each can be edited on its own)' \
+'auth:Users of password-protected sites (basic auth)' \
+'check:Check every site for monitoring/cron\: down sites, expired or expiring certificates, renewal problems' \
+'history:List recorded changes (newest first), optionally only those touching one site' \
+'undo:Undo a change\: restore every file it touched (default\: the latest change)' \
+'init:Create sites-available/ + sites-enabled/ and include them from nginx.conf (Arch, RHEL, …)' \
+'tui:Full-screen dashboard (also the default when no command is given)' \
+'completions:Print a shell completion script (bash, zsh, fish, elvish, powershell)' \
+'man:Generate man pages into a directory' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'ngx help commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__add_commands] )) ||
+_ngx__subcmd__help__subcmd__add_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help add commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__auth_commands] )) ||
+_ngx__subcmd__help__subcmd__auth_commands() {
+    local commands; commands=(
+'list:List the users who can log in' \
+'add:Add a user, or change their password (asked twice, or read from stdin with --password-stdin)' \
+'rm:Remove a user' \
+    )
+    _describe -t commands 'ngx help auth commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__auth__subcmd__add_commands] )) ||
+_ngx__subcmd__help__subcmd__auth__subcmd__add_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help auth add commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__auth__subcmd__list_commands] )) ||
+_ngx__subcmd__help__subcmd__auth__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help auth list commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__auth__subcmd__rm_commands] )) ||
+_ngx__subcmd__help__subcmd__auth__subcmd__rm_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help auth rm commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__cert_commands] )) ||
+_ngx__subcmd__help__subcmd__cert_commands() {
+    local commands; commands=(
+'info:Show certificate details\: expiry, issuer, covered names, renewal' \
+'issue:Obtain a Let'\''s Encrypt certificate for a site and switch it to HTTPS' \
+'renew:Renew a site'\''s certificate now and reload nginx' \
+'auto:Turn automatic renewal on or off (sets \`autorenew\` in the certbot renewal config)' \
+    )
+    _describe -t commands 'ngx help cert commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__cert__subcmd__auto_commands] )) ||
+_ngx__subcmd__help__subcmd__cert__subcmd__auto_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help cert auto commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__cert__subcmd__info_commands] )) ||
+_ngx__subcmd__help__subcmd__cert__subcmd__info_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help cert info commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__cert__subcmd__issue_commands] )) ||
+_ngx__subcmd__help__subcmd__cert__subcmd__issue_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help cert issue commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__cert__subcmd__renew_commands] )) ||
+_ngx__subcmd__help__subcmd__cert__subcmd__renew_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help cert renew commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__check_commands] )) ||
+_ngx__subcmd__help__subcmd__check_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help check commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__completions_commands] )) ||
+_ngx__subcmd__help__subcmd__completions_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help completions commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__disable_commands] )) ||
+_ngx__subcmd__help__subcmd__disable_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help disable commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__doctor_commands] )) ||
+_ngx__subcmd__help__subcmd__doctor_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help doctor commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__edit_commands] )) ||
+_ngx__subcmd__help__subcmd__edit_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help edit commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__enable_commands] )) ||
+_ngx__subcmd__help__subcmd__enable_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help enable commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__help_commands] )) ||
+_ngx__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help help commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__history_commands] )) ||
+_ngx__subcmd__help__subcmd__history_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help history commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__init_commands] )) ||
+_ngx__subcmd__help__subcmd__init_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help init commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__logs_commands] )) ||
+_ngx__subcmd__help__subcmd__logs_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help logs commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__ls_commands] )) ||
+_ngx__subcmd__help__subcmd__ls_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help ls commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__man_commands] )) ||
+_ngx__subcmd__help__subcmd__man_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help man commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__regen_commands] )) ||
+_ngx__subcmd__help__subcmd__regen_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help regen commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__reload_commands] )) ||
+_ngx__subcmd__help__subcmd__reload_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help reload commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__rm_commands] )) ||
+_ngx__subcmd__help__subcmd__rm_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help rm commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__show_commands] )) ||
+_ngx__subcmd__help__subcmd__show_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help show commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__split_commands] )) ||
+_ngx__subcmd__help__subcmd__split_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help split commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__test_commands] )) ||
+_ngx__subcmd__help__subcmd__test_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help test commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__tui_commands] )) ||
+_ngx__subcmd__help__subcmd__tui_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help tui commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__undo_commands] )) ||
+_ngx__subcmd__help__subcmd__undo_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help undo commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__history_commands] )) ||
+_ngx__subcmd__history_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx history commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__init_commands] )) ||
+_ngx__subcmd__init_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx init commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__logs_commands] )) ||
+_ngx__subcmd__logs_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx logs commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__ls_commands] )) ||
+_ngx__subcmd__ls_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx ls commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__man_commands] )) ||
+_ngx__subcmd__man_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx man commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__regen_commands] )) ||
+_ngx__subcmd__regen_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx regen commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__reload_commands] )) ||
+_ngx__subcmd__reload_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx reload commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__rm_commands] )) ||
+_ngx__subcmd__rm_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx rm commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__show_commands] )) ||
+_ngx__subcmd__show_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx show commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__split_commands] )) ||
+_ngx__subcmd__split_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx split commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__test_commands] )) ||
+_ngx__subcmd__test_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx test commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__tui_commands] )) ||
+_ngx__subcmd__tui_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx tui commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__undo_commands] )) ||
+_ngx__subcmd__undo_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx undo commands' commands "$@"
+}
+
+if [ "$funcstack[1]" = "_ngx" ]; then
+    _ngx "$@"
+else
+    compdef _ngx ngx
+fi

@@ -4,7 +4,7 @@
 .SH NAME
 ngx\-check \- Check every site for monitoring/cron: down sites, expired or expiring certificates, renewal problems
 .SH SYNOPSIS
-\fBngx\-check\fR [\fB\-\-json\fR] [\fB\-q\fR|\fB\-\-quiet\fR] [\fB\-h\fR|\fB\-\-help\fR] 
+\fBngx\-check\fR [\fB\-\-json\fR] [\fB\-q\fR|\fB\-\-quiet\fR] [\fB\-\-max\-5xx\fR] [\fB\-\-notify\fR] [\fB\-\-notify\-json\fR] [\fB\-\-mail\fR] [\fB\-\-always\fR] [\fB\-\-install\-timer\fR] [\fB\-\-every\fR] [\fB\-\-remove\-timer\fR] [\fB\-h\fR|\fB\-\-help\fR] 
 .SH DESCRIPTION
 Check every site for monitoring/cron: down sites, expired or expiring certificates, renewal problems
 .SH OPTIONS
@@ -15,14 +15,40 @@ Print JSON
 \fB\-q\fR, \fB\-\-quiet\fR
 No output, only the exit status
 .TP
+\fB\-\-max\-5xx\fR \fI<PERCENT>\fR [default: 5]
+Warn when more than this percentage of a site\*(Aqs requests failed with 5xx in the last 24h
+.TP
+\fB\-\-notify\fR \fI<URL>\fR
+POST a plain\-text report to this URL (ntfy\-style: Title/Priority headers). Repeatable
+.TP
+\fB\-\-notify\-json\fR \fI<URL>\fR
+POST a JSON report ({"text", "content", "status", "problems"}: Slack, Mattermost, Discord…). Repeatable
+.TP
+\fB\-\-mail\fR \fI<ADDRESS>\fR
+Email the report through the local sendmail. Repeatable
+.TP
+\fB\-\-always\fR
+Notify on every run with problems (default: only when the problems change, and once when all is resolved)
+.TP
+\fB\-\-install\-timer\fR
+Install a systemd timer (or cron job) that runs this check with the same options
+.TP
+\fB\-\-every\fR \fI<INTERVAL>\fR [default: 1h]
+How often the timer runs: 15m, 30m, 1h, 6h, 1d…
+.TP
+\fB\-\-remove\-timer\fR
+Remove the timer installed with \-\-install\-timer
+.TP
 \fB\-h\fR, \fB\-\-help\fR
 Print help
 .SH EXTRA
 Exit status: 0 all good, 1 warnings, 2 a site is down or a certificate expired/missing.
 
+Notifications are sent when the problems change (and once when all is resolved), not on every run.
+
 Examples:
   ngx check
   ngx check \-\-json
-  # /etc/cron.d/ngx\-check: mail the report when something is wrong (needs a working `mail`)
-  MAILTO=you@example.com
-  0 8 * * * root ngx check \-q || ngx check
+  ngx check \-\-notify https://ntfy.sh/my\-secret\-topic
+  ngx check \-\-notify\-json https://hooks.slack.com/services/…
+  sudo ngx check \-\-install\-timer \-\-every 1h \-\-notify https://ntfy.sh/my\-secret\-topic \-\-mail you@example.com

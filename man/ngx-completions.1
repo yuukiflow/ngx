@@ -1,0 +1,35 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH ngx-completions 1  "ngx-completions " 
+.SH NAME
+ngx\-completions \- Print a shell completion script (bash, zsh, fish, elvish, powershell)
+.SH SYNOPSIS
+\fBngx\-completions\fR [\fB\-h\fR|\fB\-\-help\fR] <\fISHELL\fR> 
+.SH DESCRIPTION
+Print a shell completion script (bash, zsh, fish, elvish, powershell)
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fISHELL\fR>
+
+.br
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+bash
+.IP \(bu 2
+elvish
+.IP \(bu 2
+fish
+.IP \(bu 2
+powershell
+.IP \(bu 2
+zsh
+.RE
+.SH EXTRA
+Install (the release packages and install.sh do this for you):
+  ngx completions bash | sudo tee /usr/share/bash\-completion/completions/ngx
+  ngx completions zsh  | sudo tee /usr/share/zsh/site\-functions/_ngx
+  ngx completions fish | sudo tee /usr/share/fish/vendor_completions.d/ngx.fish

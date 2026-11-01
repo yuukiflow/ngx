@@ -397,7 +397,9 @@ fn run_action(term: &mut DefaultTerminal, app: &mut App, a: Action) -> Result<()
                 e.downcast_ref::<inquire::InquireError>(),
                 Some(inquire::InquireError::OperationCanceled | inquire::InquireError::OperationInterrupted)
             );
-            if cancelled {
+            if e.downcast_ref::<cmd::Aborted>().is_some() {
+                ("not applied — nothing changed".to_string(), Tone::Dim)
+            } else if cancelled {
                 ("cancelled".to_string(), Tone::Dim)
             } else {
                 eprintln!("\nerror: {e:#}");
@@ -460,7 +462,7 @@ fn draw(f: &mut Frame, app: &mut App) {
     let footer: Line = if app.form.is_some() {
         Line::from(Span::styled(" changes are shown for review before anything is written", style(Tone::Dim)))
     } else if app.logs.is_some() {
-        let keys = [("↑↓ PgUp PgDn", "scroll"), ("End", "follow"), ("Home", "oldest"), ("e", "access/error"), ("Esc", "close")];
+        let keys = [("↑↓ PgUp PgDn", "scroll"), ("End", "follow"), ("/", "search"), ("p", "problems only"), ("e", "access/error"), ("Esc", "close")];
         let mut spans = Vec::new();
         for (k, d) in keys {
             spans.push(Span::styled(format!(" {k}"), style(Tone::Accent)));

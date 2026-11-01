@@ -3,7 +3,7 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/yuukiflow/ngx/main/scripts/install.sh | sudo sh
 #
-# Options (environment): NGX_VERSION=v0.2.0 to pick a release, PREFIX=/usr/local.
+# Options (environment): NGX_VERSION=v0.3.0 to pick a release, PREFIX=/usr/local.
 # The download is checked against the release's SHA256SUMS before anything is installed.
 set -eu
 
@@ -45,4 +45,9 @@ tar -C "$dir" -xzf "$dir/$name.tar.gz"
 install -d "$PREFIX/bin" "$PREFIX/share/man/man1"
 install -m 755 "$dir/$name/ngx" "$PREFIX/bin/ngx"
 install -m 644 "$dir/$name"/man/*.1 "$PREFIX/share/man/man1/"
+if [ -d "$dir/$name/completions" ]; then
+  install -Dm 644 "$dir/$name/completions/ngx.bash" "$PREFIX/share/bash-completion/completions/ngx"
+  install -Dm 644 "$dir/$name/completions/_ngx" "$PREFIX/share/zsh/site-functions/_ngx"
+  install -Dm 644 "$dir/$name/completions/ngx.fish" "$PREFIX/share/fish/vendor_completions.d/ngx.fish"
+fi
 echo "installed ngx $version to $PREFIX/bin/ngx — run \`ngx doctor\`"

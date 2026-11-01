@@ -133,7 +133,18 @@ fn backend_error(s: &Site) -> Option<String> {
             if let Upstream::Other(_) = u {
                 return None;
             }
-            ssl_free_probe(u)
+            if let Some(e) = ssl_free_probe(u) {
+                return Some(e);
+            }
+            // ngx-managed proxy sites can have an HTTP health check
+            if let (true, Upstream::Tcp { host, port }) = (s.managed, u) {
+                let spec = std::fs::read_to_string(Env::get().host(&s.file)).ok().and_then(|src| crate::nginx::template::Spec::from_config(&src));
+                if let Some(path) = spec.and_then(|sp| sp.opts.health)
+                    && let Err(why) = crate::probe::check_health(host, *port, &path, &s.domain) {
+                        return Some(format!("health check {path} {why}"));
+                    }
+            }
+            None
         }
         Kind::Static => {
             let root = s.root()?;

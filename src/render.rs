@@ -154,6 +154,12 @@ fn settings(d: &mut Doc, s: &Site) {
     if o.canonical {
         parts.push(format!("aliases → {}", spec.domain));
     }
+    if o.headers {
+        parts.push("security headers".into());
+    }
+    if let Some(h) = &o.health {
+        parts.push(format!("health check {h}"));
+    }
     if !parts.is_empty() {
         d.item("Settings", vec![plain(parts.join("  ·  "))]);
     }

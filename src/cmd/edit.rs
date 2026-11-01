@@ -5,7 +5,7 @@ use super::*;
 
 /// Best-effort reading of a hand-written site into a spec, so it can be edited
 /// with prompts like a generated one.
-pub(crate) fn spec_from_site(s: &Site) -> Result<Spec> {
+pub(crate) fn spec_from_site(s: &Site) -> Result<(Spec, Conversion)> {
     let raw_hint = || format!("use `ngx edit {} --raw` to edit the file directly", s.id);
     let backend = match (s.kind(), s.upstream()) {
         (Kind::Proxy, Some(Upstream::Tcp { host, port })) => Backend::Proxy {
@@ -34,7 +34,9 @@ pub(crate) fn spec_from_site(s: &Site) -> Result<Spec> {
             key: s.ssl_key().map(|k| k.display().to_string()).unwrap_or_default(),
         },
     };
-    Ok(Spec {
+    let src = std::fs::read_to_string(Env::get().host(&s.file)).unwrap_or_default();
+    let conv = s.main().map(|m| convert(&src, m)).unwrap_or_default();
+    Ok((Spec {
         domain: s.domain.clone(),
         aliases: s.aliases.clone(),
         inbound: s.public_port().unwrap_or(80),
@@ -43,8 +45,8 @@ pub(crate) fn spec_from_site(s: &Site) -> Result<Spec> {
         redirect_http: s.http_redirect().is_some(),
         access_log: s.main().and_then(|b| b.access_log.as_ref()).map(|p| p.display().to_string()),
         error_log: s.main().and_then(|b| b.error_log.as_ref()).map(|p| p.display().to_string()),
-        opts: template::Options::default(),
-    })
+        opts: conv.opts.clone(),
+    }, conv))
 }
 
 /// Colored unified diff between the current and the new config.
@@ -82,10 +84,15 @@ pub(crate) fn print_diff(old: &str, new: &str, label: &str) {
 
 /// Write a regenerated config for an existing site, renaming the file (and
 /// its sites-enabled link) when the domain changed.
-pub(crate) fn write_site(s: &Site, new_file: &Path, content: &str, dry_run: bool, rename: Option<(&str, &str)>) -> Result<()> {
+pub(crate) fn write_site(s: &Site, new_file: &Path, content: &str, dry_run: bool, rename: Option<(&str, &str)>, extra: &[(PathBuf, String)]) -> Result<()> {
     let env = Env::get();
     let dir = new_file.parent().unwrap_or(Path::new("/"));
     let mut tx = Tx::new(dry_run);
+    for (path, text) in extra {
+        if !env.host(path).exists() {
+            tx.write(path, text)?;
+        }
+    }
     // the domain changed: move the snippets and password file along
     if let Some((old, new)) = rename.filter(|(o, n)| o != n) {
         for f in site_files(old) {
@@ -114,7 +121,7 @@ pub fn current_spec(query: &str) -> Result<Spec> {
     let src = std::fs::read_to_string(Env::get().host(&s.file))?;
     match Spec::from_config(&src) {
         Some(sp) => Ok(sp),
-        None => spec_from_site(s),
+        None => spec_from_site(s).map(|(sp, _)| sp),
     }
 }
 
@@ -130,12 +137,15 @@ pub fn edit(query: &str, a: AddArgs, raw: bool) -> Result<()> {
     let s = site::find(&sites, query)?.clone();
     let others: Vec<&str> = sites.iter().filter(|o| o.file == s.file && o.key != s.key).map(|o| o.domain.as_str()).collect();
     if !others.is_empty() {
-        bail!("{} also defines {} — split it up or use `ngx edit {} --raw`", env.short(&s.file), others.join(", "), s.id);
+        bail!("{} also defines {} — split it into one file per site first with `sudo ngx split {}` (or use `ngx edit {} --raw`)", env.short(&s.file), others.join(", "), s.id, s.id);
     }
     let src = std::fs::read_to_string(env.host(&s.file))?;
-    let (cur, managed) = match Spec::from_config(&src) {
-        Some(sp) => (sp, true),
-        None => (spec_from_site(&s)?, false),
+    let (cur, managed, conv) = match Spec::from_config(&src) {
+        Some(sp) => (sp, true, Conversion::default()),
+        None => {
+            let (sp, c) = spec_from_site(&s)?;
+            (sp, false, c)
+        }
     };
     render::print(&[vec![render::seg(format!("Editing site #{} {}", s.id, s.domain), Tone::Bold), render::seg("  (Enter keeps the current value)", Tone::Dim)]]);
     if !managed {
@@ -160,9 +170,18 @@ pub fn edit(query: &str, a: AddArgs, raw: bool) -> Result<()> {
     }
     let final_cfg = template::render(&spec, false);
     print_diff(&src, &final_cfg, &env.short(&new_file));
+    // a converted site keeps the directives ngx doesn't generate, in a snippet
+    let snippet = conv.snippet_text(&s.file).map(|t| (template::site_dir(&spec.domain).join("converted.conf"), t));
+    if let Some((path, t)) = &snippet {
+        render::print(&[vec![render::seg(format!("+ {} (directives ngx doesn't generate, kept as a snippet):", env.short(path)), Tone::Good)]]);
+        render::print(&t.lines().map(|l| vec![render::seg(format!("  {l}"), Tone::Good)]).collect::<Vec<_>>());
+        println!();
+    }
+    for l in &conv.lost {
+        render::print(&[vec![render::seg(format!("warning: {l} can't be kept (a snippet can't go inside the generated `location /`)"), Tone::Warn)]]);
+    }
     if !confirm("Apply these changes?", true, a.yes && !a.review)? {
-        println!("aborted — nothing changed");
-        return Ok(());
+        return Err(Aborted.into());
     }
     prepare_dirs(&spec, a.dry_run)?;
 
@@ -181,7 +200,7 @@ pub fn edit(query: &str, a: AddArgs, raw: bool) -> Result<()> {
             }
             ssl::CertState::Missing(_) => {
                 // no certificate yet: serve the ACME challenge over HTTP first
-                write_site(&s, &new_file, &template::render(&spec, true), a.dry_run, Some((&cur.domain, &spec.domain)))?;
+                write_site(&s, &new_file, &template::render(&spec, true), a.dry_run, Some((&cur.domain, &spec.domain)), snippet.as_slice())?;
                 if a.dry_run {
                     println!("dry run — would run certbot for {}", names.join(", "));
                 } else if let Err(e) = ssl::issue_for(&spec.ssl, &names, email.as_deref(), a.staging) {
@@ -200,7 +219,7 @@ pub fn edit(query: &str, a: AddArgs, raw: bool) -> Result<()> {
     } else {
         s.clone()
     };
-    write_site(&s_now, &new_file, &final_cfg, a.dry_run, Some((&cur.domain, &spec.domain)))?;
+    write_site(&s_now, &new_file, &final_cfg, a.dry_run, Some((&cur.domain, &spec.domain)), snippet.as_slice())?;
     if spec.opts.auth && !a.dry_run {
         ensure_htpasswd(&spec.domain, a.yes && !a.review)?;
     }

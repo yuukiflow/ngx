@@ -19,6 +19,9 @@ every other name is an alias. Named `upstream { }` blocks in the same file are r
 
 A file that can't be parsed still shows up, named after the file, with the parse error as its status.
 
+Named `upstream` blocks are resolved across files too (nginx shares them across the whole `http` context), so a site
+whose upstream is defined in `nginx.conf` or another enabled file still shows its real port.
+
 ## Site IDs
 
 Each site gets a number the first time ngx sees it, stored in `/var/lib/ngx/state.json` under the key
@@ -39,6 +42,7 @@ Checked in this order; the first match wins:
 | `nginx -t` reports an error in this file (root only) | `○ down` | `config error: <message> (line N)` |
 | No nginx master process is running | `○ down` | `nginx is not running` |
 | Proxy / PHP site whose upstream can't be reached (TCP connect with a 1.5 s timeout, or unix socket connect) | `○ down` | `502 Bad Gateway: upstream <addr> refused connection` (or `timed out`, `socket does not exist`…) |
+| Proxy site created by ngx with a health check path, whose app answers it with anything but 2xx/3xx (GET with the site's `Host`, 3 s timeout) | `○ down` | `health check /health returned 503` (or `timed out`…) |
 | Static site whose root directory doesn't exist | `○ down` | `404 Not Found: root <dir> does not exist` |
 | Otherwise | `● up` | — |
 
@@ -125,6 +129,9 @@ Every change is one transaction:
    are printed. nginx keeps running the old config the whole time.
 5. If it passes, **reload** and wait until new nginx workers are running and the old ones have stopped accepting
    requests. Only then does ngx report success.
+6. If the reload fails anyway (`nginx -t` can't catch everything: a port already used by another program, for
+   example), the files are **rolled back** too, and nginx is reloaded with the previous configuration, so what's on
+   disk always matches what nginx serves. Otherwise the next unrelated reload would apply the change by surprise.
 
 `--dry-run` stops before step 1 and lists what would be written.
 
@@ -134,7 +141,8 @@ One backup directory is one entry of [`ngx history`](commands.md#ngx-history): a
 it (several commands in the same second get `-2`, `-3`… suffixes). A transaction that was rolled back leaves nothing
 behind. The last 50 entries are kept; older ones are deleted after each change.
 
-`ngx undo <ID>` restores an entry. Backup files are named after their full path, with `/` replaced by `%`:
+`ngx undo <ID>` restores an entry. The manifest also records site ID changes (renames, removals), so undo gives
+IDs back too. Backup files are named after their full path, with `/` replaced by `%`:
 
 ```
 /var/lib/ngx/backups/20261031-204512/manifest.json
