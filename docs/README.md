@@ -5,6 +5,7 @@
 - [Dashboard](dashboard.md): the full-screen interface and its keys
 - [Certificates](ssl.md): Let's Encrypt, renewal (auto vs manual), your own certificates
 - [How it works](how-it-works.md): how sites are found, IDs, status rules, generated configs, safe changes, backups, files touched
+- [Security](security.md): input validation, hardened configs, what runs as root, file permissions
 - [Troubleshooting](troubleshooting.md): common errors and how to fix them
 - [Development](development.md): sandbox mode, tests, environment variables, code map
 

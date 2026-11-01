@@ -107,19 +107,28 @@ fn body(spec: &Spec, out: &mut String) {
         }
         Backend::Static { root } => {
             out.push_str(&format!("    root {root};\n    index index.html index.htm;\n\n"));
+            deny_hidden(out);
             out.push_str("    location / {\n        try_files $uri $uri/ =404;\n    }\n");
         }
         Backend::Php { socket, root } => {
             out.push_str(&format!("    root {root};\n    index index.php index.html;\n\n"));
+            // before the PHP location: regex locations match in order
+            deny_hidden(out);
             out.push_str("    location / {\n        try_files $uri $uri/ /index.php?$query_string;\n    }\n\n");
             out.push_str("    location ~ \\.php$ {\n");
+            // only run scripts that exist, so /upload.jpg/x.php can't execute an upload
+            out.push_str("        try_files $fastcgi_script_name =404;\n");
             out.push_str("        include fastcgi_params;\n");
             out.push_str("        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;\n");
             out.push_str(&format!("        fastcgi_pass unix:{socket};\n"));
-            out.push_str("    }\n\n");
-            out.push_str("    location ~ /\\.(?!well-known) {\n        deny all;\n    }\n");
+            out.push_str("    }\n");
         }
     }
+}
+
+/// Hidden files (.git, .env, .htpasswd…) are never served.
+fn deny_hidden(out: &mut String) {
+    out.push_str("    location ~ /\\.(?!well-known/) {\n        deny all;\n    }\n\n");
 }
 
 fn acme(out: &mut String) {
@@ -202,6 +211,39 @@ mod tests {
         assert!(blocks[*main].is_ssl());
         assert!(blocks.iter().any(|b| b.redirect.is_some()));
         assert_eq!(blocks[*main].upstream().unwrap().to_string(), "127.0.0.1:3000");
+    }
+
+    #[test]
+    fn php_and_static_are_hardened() {
+        let php = render(&Spec { backend: Backend::Php { socket: "/run/php/php-fpm.sock".into(), root: "/var/www/x".into() }, ..spec(Ssl::None) }, false);
+        let (deny, fpm) = (php.find("deny all").unwrap(), php.find("location ~ \\.php$").unwrap());
+        assert!(deny < fpm, "hidden files must be denied before the PHP location");
+        assert!(php.contains("try_files $fastcgi_script_name =404;"));
+        let st = render(&Spec { backend: Backend::Static { root: "/var/www/x".into() }, ..spec(Ssl::None) }, false);
+        assert!(st.contains("deny all"));
+    }
+
+    #[test]
+    fn injection_is_rejected() {
+        use crate::validate;
+        let base = spec(Ssl::None);
+        let bad = [
+            Spec { domain: "x.com; include /etc/shadow".into(), ..base.clone() },
+            Spec { domain: "../../etc/cron.d/x".into(), ..base.clone() },
+            Spec { aliases: vec!["a.com;\n location / { root / ; }".into()], ..base.clone() },
+            Spec { backend: Backend::Static { root: "/var/www/x; autoindex on".into() }, ..base.clone() },
+            Spec { backend: Backend::Static { root: "/".into() }, ..base.clone() },
+            Spec { backend: Backend::Static { root: "/etc/nginx".into() }, ..base.clone() },
+            Spec { backend: Backend::Proxy { host: "127.0.0.1;".into(), port: 1, websocket: false }, ..base.clone() },
+            Spec { backend: Backend::Php { socket: "/run/x.sock;".into(), root: "/var/www/x".into() }, ..base.clone() },
+            Spec { ssl: Ssl::Existing { cert: "/a b".into(), key: "/k".into() }, ..base.clone() },
+            Spec { access_log: Some("/var/log/x;".into()), ..base.clone() },
+            Spec { aliases: vec!["*.x.com".into()], ..spec(Ssl::LetsEncrypt) },
+        ];
+        for s in &bad {
+            assert!(validate::spec(s).is_err(), "{s:?}");
+        }
+        assert!(validate::spec(&base).is_ok());
     }
 
     #[test]

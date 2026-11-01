@@ -28,6 +28,9 @@ ID  STATUS  DOMAIN               SSL                     RENEW   IN   LOCAL     
 - **Change them the same way** (`ngx edit`): the questions come back pre-filled; you see a diff before anything is written.
 - **Changes can't break nginx**: every change is backed up, checked with `nginx -t`, rolled back if it fails, and
   reported as done only once nginx is serving the new config.
+- **No new attack surface**: every value is validated before it goes into a config, generated configs hide dotfiles
+  and only run existing PHP scripts, and nothing a backend user controls ever runs as root
+  ([details](docs/security.md)).
 - **Stable IDs**: `ngx show 4` always means the same site.
 - Works with **existing configs** as they are, on Debian/Ubuntu (`sites-enabled`) and Arch/Fedora (`ngx init` sets up the layout).
 
@@ -82,6 +85,7 @@ ngx logs 4 -e -f
 - [Dashboard](docs/dashboard.md)
 - [Certificates and renewal](docs/ssl.md)
 - [How it works](docs/how-it-works.md): status rules, generated configs, safe changes, backups, files touched
+- [Security](docs/security.md): why using ngx is as safe as writing the configs yourself
 - [Troubleshooting](docs/troubleshooting.md)
 - [Development](docs/development.md): sandbox/demo mode, tests, code map
 

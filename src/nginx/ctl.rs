@@ -66,7 +66,9 @@ pub fn test() -> Option<TestResult> {
         return None;
     }
     let bin = bin()?;
-    let (ok, raw) = env::run(bin.to_str()?, &["-t", "-q"])?;
+    // test the configuration ngx manages, not whatever path nginx was compiled with
+    let conf = Env::get().nginx_conf().display().to_string();
+    let (ok, raw) = env::run(bin.to_str()?, &["-t", "-q", "-c", &conf])?;
     Some(TestResult { ok, msgs: parse_output(&raw), raw })
 }
 
@@ -130,7 +132,7 @@ pub fn reload() -> anyhow::Result<String> {
         return wait_for_new_workers(&before);
     }
     let bin = bin().ok_or_else(|| anyhow::anyhow!("nginx binary not found"))?;
-    let (ok, out) = env::run(bin.to_str().unwrap_or("nginx"), &["-s", "reload"]).unwrap_or((false, String::new()));
+    let (ok, out) = env::run(bin.to_str().unwrap_or("nginx"), &["-s", "reload", "-c", &Env::get().nginx_conf().display().to_string()]).unwrap_or((false, String::new()));
     anyhow::ensure!(ok, "nginx -s reload failed: {out}");
     wait_for_new_workers(&before)
 }

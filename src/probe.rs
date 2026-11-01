@@ -215,30 +215,102 @@ fn manager(pid: u32) -> Manager {
     Manager::Unknown
 }
 
-fn first_line(cmd: &Path, arg: &str) -> Option<String> {
-    let (_, out) = env::run(cmd.to_str()?, &[arg])?;
-    out.lines().next().map(|s| s.trim().to_string())
+/// Effective uid and gid of a process.
+fn owner(pid: u32) -> Option<(u32, u32)> {
+    let st = std::fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
+    let field = |k: &str| st.lines().find_map(|l| l.strip_prefix(k))?.split_whitespace().nth(1)?.parse().ok();
+    Some((field("Uid:")?, field("Gid:")?))
+}
+
+/// Run a backend's own binary to ask its version, without giving it anything
+/// it doesn't already have. The binary belongs to whoever runs the backend, so
+/// when ngx runs as root it is executed with that user's uid/gid (never as root,
+/// unless the process is root's and the binary is root-owned and not writable by
+/// anyone else), in a new session with no terminal, a clean environment, no
+/// stdin, and a 2 s time limit.
+fn version_output(pid: u32, args: &[&str]) -> Option<String> {
+    use std::io::Read;
+    use std::os::unix::fs::MetadataExt;
+    use std::os::unix::process::CommandExt;
+    use std::os::fd::AsRawFd;
+    // Open the binary first, then check and execute that same open file, so a
+    // pid that exits and gets reused in between can't swap in another binary.
+    let file = std::fs::File::open(format!("/proc/{pid}/exe")).ok()?;
+    let (uid, gid) = owner(pid)?;
+    let as_root = env::is_root();
+    if as_root && uid == 0 {
+        let m = file.metadata().ok()?;
+        if m.uid() != 0 || m.mode() & 0o022 != 0 {
+            return None;
+        }
+    }
+    let mut cmd = std::process::Command::new(format!("/proc/self/fd/{}", file.as_raw_fd()));
+    cmd.args(args)
+        .env_clear()
+        .env("PATH", "/usr/local/bin:/usr/bin:/bin")
+        .env("LANG", "C")
+        .current_dir("/")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let drop_to = (as_root && uid != 0).then_some((uid, gid));
+    unsafe {
+        cmd.pre_exec(move || {
+            if libc::setsid() < 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            if let Some((uid, gid)) = drop_to {
+                if libc::setgroups(0, std::ptr::null()) != 0 || libc::setgid(gid) != 0 || libc::setuid(uid) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+            }
+            Ok(())
+        });
+    }
+    let mut child = cmd.spawn().ok()?;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if std::time::Instant::now() < deadline => std::thread::sleep(std::time::Duration::from_millis(20)),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    }
+    let mut out = String::new();
+    child.stdout.take()?.take(4096).read_to_string(&mut out).ok()?;
+    if out.trim().is_empty() {
+        child.stderr.take()?.take(4096).read_to_string(&mut out).ok()?;
+    }
+    Some(out)
+}
+
+fn first_line(pid: u32, arg: &str) -> Option<String> {
+    let out = version_output(pid, &[arg])?;
+    out.lines().next().map(|s| s.trim().chars().take(80).collect())
 }
 
 fn runtime(pid: u32, exe: &Path) -> Option<String> {
     let name = exe.file_name()?.to_string_lossy().into_owned();
-    let proc_exe = PathBuf::from(format!("/proc/{pid}/exe"));
     let args = cmdline(pid);
     if name == "node" || name.starts_with("node") {
-        let v = first_line(&proc_exe, "--version")?;
+        let v = first_line(pid, "--version")?;
         return Some(format!("Node.js {}", v.trim_start_matches('v')));
     }
     if name == "bun" || name == "deno" {
-        let v = first_line(&proc_exe, "--version")?;
+        let v = first_line(pid, "--version")?;
         return Some(v);
     }
     if name.starts_with("php-fpm") {
-        let v = first_line(&proc_exe, "-v")?;
+        let v = first_line(pid, "-v")?;
         let ver = v.split_whitespace().nth(1)?;
         return Some(format!("PHP {ver} (php-fpm)"));
     }
     if name.starts_with("python") {
-        let v = first_line(&proc_exe, "--version")?;
+        let v = first_line(pid, "--version")?;
         let server = args.iter().find_map(|a| {
             ["gunicorn", "uvicorn", "uwsgi", "hypercorn", "daphne", "flask", "manage.py"]
                 .into_iter()
@@ -250,8 +322,7 @@ fn runtime(pid: u32, exe: &Path) -> Option<String> {
         });
     }
     if name == "java" {
-        let (_, out) = env::run(proc_exe.to_str()?, &["-version"])?;
-        return out.lines().next().map(String::from);
+        return first_line(pid, "-version");
     }
     Some(name)
 }
@@ -356,5 +427,18 @@ pub fn fmt_uptime(since: DateTime<Local>) -> String {
         format!("{hours}h {mins}m")
     } else {
         format!("{mins}m")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn version_of_running_process() {
+        let mut child = std::process::Command::new("sleep").arg("5").spawn().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(100)); // let it exec
+        let out = super::version_output(child.id(), &["--version"]);
+        child.kill().unwrap();
+        child.wait().unwrap();
+        assert!(out.unwrap_or_default().contains("sleep"), "should run the process's own binary");
     }
 }

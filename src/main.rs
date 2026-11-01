@@ -9,6 +9,7 @@ mod ssl;
 mod state;
 mod status;
 mod tui;
+mod validate;
 
 use clap::{Parser, Subcommand};
 use status::{Report, State};
@@ -218,6 +219,9 @@ fn show(q: &str, json: bool) -> anyhow::Result<()> {
 }
 
 fn main() {
+    // Files and directories ngx creates (configs, document roots, backups) must
+    // never be group/world-writable, whatever umask root's shell has.
+    unsafe { libc::umask(0o022) };
     let cli = Cli::parse();
     let res = match cli.cmd {
         None | Some(Cmd::Tui) => tui::run(),
@@ -241,7 +245,8 @@ fn main() {
             eprintln!("cancelled");
             std::process::exit(130);
         }
-        eprintln!("error: {e:#}");
+        let msg = format!("{e:#}");
+        eprintln!("error: {}", msg.lines().map(|l| validate::clean(l).into_owned()).collect::<Vec<_>>().join("\n"));
         std::process::exit(1);
     }
 }

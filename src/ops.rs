@@ -4,12 +4,36 @@
 use crate::env::Env;
 use crate::nginx::ctl;
 use anyhow::{bail, Result};
+use std::io::Write;
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 enum Orig {
     Absent,
-    File(Vec<u8>),
+    File(Vec<u8>, u32),
     Link(PathBuf),
+}
+
+/// Write a file atomically (temp file + rename) with an explicit mode. The temp
+/// file is created exclusively, so a pre-planted file or symlink is never followed.
+fn write_atomic(host: &Path, data: &[u8], mode: u32) -> std::io::Result<()> {
+    let tmp = host.with_extension("ngx-tmp");
+    let _ = std::fs::remove_file(&tmp);
+    let mut f = std::fs::OpenOptions::new().write(true).create_new(true).mode(mode).open(&tmp)?;
+    f.set_permissions(std::fs::Permissions::from_mode(mode))?;
+    f.write_all(data)?;
+    f.sync_all()?;
+    drop(f);
+    std::fs::rename(&tmp, host)
+}
+
+/// Backups can contain anything a config referenced: keep them root-only.
+fn private_dir(dir: &Path) -> std::io::Result<()> {
+    std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
+    if let Some(parent) = dir.parent() {
+        std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))?;
+    }
+    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
 }
 
 pub struct Tx {
@@ -33,14 +57,20 @@ impl Tx {
         let orig = match std::fs::symlink_metadata(host) {
             Err(_) => Orig::Absent,
             Ok(m) if m.file_type().is_symlink() => Orig::Link(std::fs::read_link(host)?),
-            Ok(_) => {
+            Ok(m) => {
                 let data = std::fs::read(host)?;
+                let mode = m.permissions().mode() & 0o7777;
                 if !self.dry_run {
-                    std::fs::create_dir_all(&self.backup_dir)?;
+                    private_dir(&self.backup_dir)?;
                     let name = host.to_string_lossy().trim_start_matches('/').replace('/', "%");
-                    std::fs::write(self.backup_dir.join(name), &data)?;
+                    // several changes within one second share a backup dir: keep the earliest copy
+                    match std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(self.backup_dir.join(name)) {
+                        Ok(mut f) => f.write_all(&data)?,
+                        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+                        Err(e) => return Err(e.into()),
+                    }
                 }
-                Orig::File(data)
+                Orig::File(data, mode)
             }
         };
         self.orig.push((host.to_path_buf(), orig));
@@ -57,9 +87,9 @@ impl Tx {
         if let Some(dir) = host.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        let tmp = host.with_extension("ngx-tmp");
-        std::fs::write(&tmp, content)?;
-        std::fs::rename(&tmp, &host)?;
+        // keep the current mode of an existing file; new configs are 0644 like nginx's own
+        let mode = std::fs::metadata(&host).map(|m| m.permissions().mode() & 0o7777).unwrap_or(0o644);
+        write_atomic(&host, content.as_bytes(), mode)?;
         Ok(())
     }
 
@@ -104,8 +134,8 @@ impl Tx {
             let _ = std::fs::remove_file(&host);
             match orig {
                 Orig::Absent => {}
-                Orig::File(d) => {
-                    let _ = std::fs::write(&host, d);
+                Orig::File(d, mode) => {
+                    let _ = write_atomic(&host, &d, mode);
                 }
                 Orig::Link(t) => {
                     let _ = std::os::unix::fs::symlink(t, &host);
@@ -127,10 +157,11 @@ impl Tx {
             None => {
                 if Env::get().sandboxed() {
                     println!("sandbox mode: skipped nginx -t and reload");
-                } else {
-                    println!("warning: nginx binary not found — configuration was written but not tested");
+                    return Ok(());
                 }
-                return Ok(());
+                // never leave a configuration in place that nginx hasn't validated
+                self.rollback();
+                bail!("cannot run nginx -t (nginx binary not found; set NGX_NGINX_BIN) — nothing was changed");
             }
             Some(t) if !t.ok => {
                 self.rollback();

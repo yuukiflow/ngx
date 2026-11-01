@@ -25,11 +25,20 @@ pub enum Tone {
 pub struct Seg(pub String, pub Tone);
 pub type Line = Vec<Seg>;
 
+/// Every segment is sanitized: much of what's shown (log lines, process
+/// output, config values, certificate fields) comes from outside, and must not
+/// be able to send escape sequences to the terminal.
+fn safe(s: String) -> String {
+    match crate::validate::clean(&s) {
+        std::borrow::Cow::Borrowed(_) => s,
+        std::borrow::Cow::Owned(o) => o,
+    }
+}
 pub fn seg(s: impl Into<String>, t: Tone) -> Seg {
-    Seg(s.into(), t)
+    Seg(safe(s.into()), t)
 }
 fn plain(s: impl Into<String>) -> Seg {
-    Seg(s.into(), Tone::Plain)
+    Seg(safe(s.into()), Tone::Plain)
 }
 
 pub fn width(l: &[Seg]) -> usize {

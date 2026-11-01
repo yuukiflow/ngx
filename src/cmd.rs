@@ -132,10 +132,19 @@ pub struct AddArgs {
     pub dry_run: bool,
 }
 
+use crate::validate;
+
 fn valid_domain(d: &str) -> bool {
-    !d.is_empty()
-        && d.len() <= 253
-        && d.split('.').all(|l| !l.is_empty() && l.len() <= 63 && l.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '*'))
+    validate::domain(d)
+}
+
+/// Prompt validator for absolute paths that go into the config.
+fn path_validator(s: &str) -> std::result::Result<Validation, inquire::CustomUserError> {
+    Ok(if validate::path(s.trim()) {
+        Validation::Valid
+    } else {
+        Validation::Invalid("absolute path, without spaces, quotes or ; { } $ # characters".into())
+    })
 }
 
 fn php_sockets() -> Vec<String> {
@@ -156,7 +165,12 @@ fn php_sockets() -> Vec<String> {
 
 fn parse_local(s: &str) -> Result<(String, u16)> {
     match s.rsplit_once(':') {
-        Some((h, p)) => Ok((h.to_string(), p.parse().context("invalid port")?)),
+        Some((h, p)) => {
+            if !validate::host(h) {
+                bail!("invalid upstream host {h:?}: use an IP address or host name");
+            }
+            Ok((h.to_string(), p.parse().context("invalid port")?))
+        }
         None => Ok(("127.0.0.1".into(), s.parse().context("invalid port")?)),
     }
 }
@@ -253,7 +267,7 @@ fn build_spec(a: &AddArgs, existing: &[Site], cur: Option<&Spec>) -> Result<(Spe
         Ok(match &a.root {
             Some(r) => r.clone(),
             None if y => default_root.clone(),
-            None => Text::new("Document root:").with_default(&default_root).prompt()?,
+            None => Text::new("Document root:").with_default(&default_root).with_validator(path_validator).prompt()?.trim().to_string(),
         })
     };
     let backend = match kind {
@@ -280,13 +294,13 @@ fn build_spec(a: &AddArgs, existing: &[Site], cur: Option<&Spec>) -> Result<(Spe
             let socket = match (&a.socket, &cur_sock) {
                 (Some(s), _) => s.clone(),
                 (None, Some(c)) if y => c.clone(),
-                (None, Some(c)) => Text::new("php-fpm socket:").with_default(c).prompt()?,
+                (None, Some(c)) => Text::new("php-fpm socket:").with_default(c).with_validator(path_validator).prompt()?.trim().to_string(),
                 (None, None) => {
                     let socks = php_sockets();
                     match (socks.len(), y) {
                         (0, true) => "/run/php/php-fpm.sock".into(),
                         (_, true) => socks[0].clone(),
-                        (0, false) => Text::new("php-fpm socket:").with_default("/run/php/php-fpm.sock").prompt()?,
+                        (0, false) => Text::new("php-fpm socket:").with_default("/run/php/php-fpm.sock").with_validator(path_validator).prompt()?.trim().to_string(),
                         (1, false) => socks[0].clone(),
                         _ => Select::new("php-fpm socket:", socks).prompt()?,
                     }
@@ -321,14 +335,20 @@ fn build_spec(a: &AddArgs, existing: &[Site], cur: Option<&Spec>) -> Result<(Spe
             (Some(v), _) => v.clone(),
             (None, Some(c)) if y => c.clone(),
             (None, None) if y => bail!("--{name} is required with --ssl existing"),
-            (None, Some(c)) => Text::new(label).with_default(c).prompt()?,
-            (None, None) => Text::new(label).prompt()?,
+            (None, Some(c)) => Text::new(label).with_default(c).with_validator(path_validator).prompt()?.trim().to_string(),
+            (None, None) => Text::new(label).with_validator(path_validator).prompt()?.trim().to_string(),
         })
     };
     let ssl = match ssl_choice {
         0 => {
             if email.is_none() && !y && !ssl::has_account() {
-                let e = Text::new("Email for Let's Encrypt expiry notices (optional):").prompt()?;
+                let e = Text::new("Email for Let's Encrypt expiry notices (optional):")
+                    .with_validator(|e: &str| {
+                        Ok(if e.trim().is_empty() || validate::email(e.trim()) { Validation::Valid } else { Validation::Invalid("not a valid email address".into()) })
+                    })
+                    .prompt()?
+                    .trim()
+                    .to_string();
                 email = Some(e).filter(|e| !e.trim().is_empty());
             }
             Ssl::LetsEncrypt
@@ -362,7 +382,22 @@ fn build_spec(a: &AddArgs, existing: &[Site], cur: Option<&Spec>) -> Result<(Spe
         Some(c) if c.domain == domain => (c.access_log.clone(), c.error_log.clone()),
         _ => (None, None),
     };
-    Ok((Spec { domain, aliases, inbound, backend, ssl, redirect_http, access_log, error_log }, email))
+    let spec = Spec { domain, aliases, inbound, backend, ssl, redirect_http, access_log, error_log };
+    validate::spec(&spec)?;
+    check_email(email.as_deref())?;
+    if let Ssl::Existing { key, .. } = &spec.ssl {
+        if let Some(w) = validate::key_warning(key) {
+            render::print(&[vec![render::seg(format!("warning: {w}"), Tone::Warn)]]);
+        }
+    }
+    Ok((spec, email))
+}
+
+fn check_email(e: Option<&str>) -> Result<()> {
+    match e {
+        Some(e) if !e.is_empty() && !validate::email(e) => bail!("invalid email address: {e:?}"),
+        _ => Ok(()),
+    }
 }
 
 fn ensure_log_format(tx: &mut Tx, dir: &Path, link: bool) -> Result<()> {
@@ -575,14 +610,12 @@ fn spec_from_site(s: &Site) -> Result<Spec> {
 
 /// Colored unified diff between the current and the new config.
 fn print_diff(old: &str, new: &str, label: &str) {
-    let dir = std::env::temp_dir();
-    let (a, b) = (dir.join(format!("ngx-old-{}", std::process::id())), dir.join(format!("ngx-new-{}", std::process::id())));
-    let out = std::fs::write(&a, old)
-        .and_then(|_| std::fs::write(&b, new))
-        .ok()
-        .and_then(|_| std::process::Command::new("diff").args(["-u", "--label", &format!("{label} (current)"), "--label", &format!("{label} (new)")]).arg(&a).arg(&b).output().ok());
-    let _ = std::fs::remove_file(&a);
-    let _ = std::fs::remove_file(&b);
+    // private, randomly named directory (0700): nothing in /tmp can be pre-planted
+    let out = tempfile::Builder::new().prefix("ngx-diff-").tempdir().ok().and_then(|dir| {
+        let (a, b) = (dir.path().join("current"), dir.path().join("new"));
+        std::fs::write(&a, old).and_then(|_| std::fs::write(&b, new)).ok()?;
+        std::process::Command::new("diff").args(["-u", "--label", &format!("{label} (current)"), "--label", &format!("{label} (new)")]).arg(&a).arg(&b).output().ok()
+    });
     let lines: Vec<render::Line> = match out {
         Some(o) => String::from_utf8_lossy(&o.stdout)
             .lines()
@@ -727,7 +760,9 @@ fn edit_raw(query: &str) -> Result<()> {
     let s = site::find(&sites, query)?;
     let env = Env::get();
     let orig = std::fs::read_to_string(env.host(&s.file))?;
-    let tmp = std::env::temp_dir().join(format!("ngx-{}-{}", std::process::id(), s.file.file_name().unwrap_or_default().to_string_lossy()));
+    // edit a copy in a private, randomly named directory (0700, removed on return)
+    let dir = tempfile::Builder::new().prefix("ngx-edit-").tempdir()?;
+    let tmp = dir.path().join(s.file.file_name().unwrap_or_default());
     std::fs::write(&tmp, &orig)?;
     let editor = std::env::var("VISUAL").or_else(|_| std::env::var("EDITOR")).unwrap_or_else(|_| {
         if env::which("nano").is_some() { "nano".into() } else { "vi".into() }
@@ -773,7 +808,7 @@ fn edit_raw(query: &str) -> Result<()> {
             }
         }
     };
-    let _ = std::fs::remove_file(&tmp);
+    drop(dir);
     result
 }
 
@@ -858,14 +893,19 @@ pub fn cert(c: CertCmd) -> Result<()> {
             let s = site::find(&sites, &q)?;
             let src = std::fs::read_to_string(Env::get().host(&s.file))?;
             let names: Vec<String> = s.all_names().map(String::from).collect();
+            check_email(email.as_deref())?;
+            if let Some(bad) = names.iter().find(|n| !validate::domain(n) || n.starts_with('*')) {
+                bail!("cannot request a certificate for {bad:?}: only plain domain names can be validated over HTTP");
+            }
             match Spec::from_config(&src) {
                 Some(mut spec) => {
-                    ssl::issue_webroot(&names, email.as_deref(), staging)?;
                     spec.ssl = Ssl::LetsEncrypt;
                     if spec.inbound == 80 {
                         spec.inbound = 443;
                         spec.redirect_http = true;
                     }
+                    validate::spec(&spec)?;
+                    ssl::issue_webroot(&names, email.as_deref(), staging)?;
                     let mut tx = Tx::new(false);
                     tx.write(&s.file, &template::render(&spec, false))?;
                     tx.commit()?;

@@ -12,6 +12,17 @@ echo "=== add"; ngx add -y -d app.test -l 3000 --ssl none | tail -2
 curl -s -H 'Host: app.test' http://127.0.0.1/
 echo "=== add static"; ngx add -y -d www.static.test --root /srv/static --ssl none | tail -1
 curl -s -H 'Host: www.static.test' http://127.0.0.1/ | head -c 80; echo
+echo "=== hardening"
+mkdir -p /srv/static/.git && echo secret > /srv/static/.git/config && echo SECRET=1 > /srv/static/.env
+echo "hidden files (expect 403 403):" $(curl -s -o /dev/null -w '%{http_code}' -H 'Host: www.static.test' http://127.0.0.1/.git/config) \
+  $(curl -s -o /dev/null -w '%{http_code}' -H 'Host: www.static.test' http://127.0.0.1/.env)
+ngx add -y -d php.test -t php --root /srv/php --socket /run/php-fpm/php-fpm.sock --ssl none | tail -1
+grep -q 'try_files $fastcgi_script_name =404' /etc/nginx/sites-available/php.test.conf && echo "php: script must exist (ok)"
+echo "php hidden file (expect 403):" $(curl -s -o /dev/null -w '%{http_code}' -H 'Host: php.test' http://127.0.0.1/.env.php)
+ngx rm -y php.test | tail -1
+ngx add -y -d 'evil.test; include /etc/shadow' -l 3000 --ssl none 2>&1 | tail -1
+ngx add -y -d evil.test -t static --root / --ssl none 2>&1 | tail -1
+ls /etc/nginx/sites-available | grep -c evil || echo "no evil config written (ok)"
 echo "=== ls"; ngx ls
 echo "=== show"; ngx show 1
 echo "=== edit via prompts/flags: move app to port 3001"

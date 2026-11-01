@@ -51,6 +51,18 @@ file and line. Common causes:
   ```
 - `unknown directive`: a typo in a `--raw` edit.
 
+## "cannot run nginx -t … nothing was changed"
+
+ngx couldn't find the nginx binary, so it refused to leave an untested config in place. Install nginx, or point ngx
+at it: `sudo NGX_NGINX_BIN=/opt/nginx/sbin/nginx ngx …`.
+
+## "invalid domain name", "invalid document root", "refusing to publish … as a document root"
+
+Values that go into the config are restricted so they can't change its meaning (see [Security](security.md)). Paths
+must be absolute and can't contain spaces, quotes or `; { } $ #`; move the files to a plain path or use a symlink.
+System directories and whole home directories can't be document roots; use a dedicated directory such as
+`/var/www/<site>`.
+
 ## "nginx did not pick up the new configuration within 5s"
 
 nginx accepted the config (`nginx -t` passed) but the reload didn't complete. Look at the end of

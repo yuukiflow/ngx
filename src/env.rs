@@ -27,7 +27,8 @@ fn var_path(name: &str) -> Option<PathBuf> {
 impl Env {
     pub fn get() -> &'static Env {
         ENV.get_or_init(|| {
-            let root = var_path("NGX_ROOT").map(|r| std::fs::canonicalize(&r).unwrap_or(r));
+            // NGX_ROOT=/ would be the real system with nginx -t and reloads skipped: ignore it
+            let root = var_path("NGX_ROOT").map(|r| std::fs::canonicalize(&r).unwrap_or(r)).filter(|r| r != Path::new("/"));
             let mut env = Env {
                 root,
                 nginx_dir: PathBuf::from("/etc/nginx"),

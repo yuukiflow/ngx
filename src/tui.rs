@@ -358,7 +358,7 @@ fn draw(f: &mut Frame, app: &mut App) {
         let idx: Vec<usize> = (0..r.sites.len()).collect();
         title.extend(to_line(&render::summary(r, &idx)).spans);
         if !r.global.is_empty() {
-            title.push(Span::styled(format!("  ·  nginx: {}", r.global[0]), style(Tone::Bad)));
+            title.push(Span::styled(format!("  ·  nginx: {}", crate::validate::clean(&r.global[0])), style(Tone::Bad)));
         }
     } else {
         title.push(Span::styled("loading…", style(Tone::Dim)));
@@ -380,12 +380,12 @@ fn draw(f: &mut Frame, app: &mut App) {
 
     // footer
     let footer: Line = if app.filtering {
-        Line::from(vec![Span::styled(" filter: ", style(Tone::Accent)), Span::raw(app.filter.clone()), Span::styled("▏", style(Tone::Accent))])
+        Line::from(vec![Span::styled(" filter: ", style(Tone::Accent)), Span::raw(crate::validate::clean(&app.filter).into_owned()), Span::styled("▏", style(Tone::Accent))])
     } else {
         let keys = [("↑↓", "select"), ("⏎", "zoom"), ("/", "filter"), ("a", "add"), ("e", "edit"), ("d", "on/off"), ("x", "remove"), ("i", "issue cert"), ("r", "renew"), ("l/L", "logs"), ("t", "test"), ("R", "reload"), ("g", "refresh"), ("q", "quit")];
         let mut spans = Vec::new();
         if let Some((m, t)) = &app.message {
-            spans.push(Span::styled(format!(" {m} "), style(*t)));
+            spans.push(Span::styled(format!(" {} ", crate::validate::clean(m)), style(*t)));
             spans.push(Span::raw(" "));
         }
         for (k, d) in keys {

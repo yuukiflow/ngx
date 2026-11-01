@@ -57,7 +57,9 @@ process's open files), then works out:
   the systemd unit from its control group,
 - **uptime**, **working directory**, and for php-fpm the pools and number of workers.
 
-Seeing other users' processes requires root. Without it, ngx shows `running · details need root`.
+Seeing other users' processes requires root. Without it, ngx shows `running · details need root`. As root, the
+version check runs the binary as the backend's own user, never as root unless both are root's (see
+[Security](security.md#no-foreign-code-runs-as-root)).
 
 ## Generated configs
 
@@ -77,9 +79,13 @@ A generated config contains:
 - `ssl_certificate` / `ssl_certificate_key`, TLS 1.2 and 1.3, a shared session cache,
 - `access_log /var/log/nginx/<domain>.access.log ngx` and `error_log /var/log/nginx/<domain>.error.log`,
 - for **proxy** sites: `proxy_pass`, HTTP/1.1, the `Host`, `X-Real-IP`, `X-Forwarded-For` and `X-Forwarded-Proto` headers, and the WebSocket upgrade headers when enabled,
-- for **static** sites: `root`, `index`, `try_files $uri $uri/ =404`,
-- for **PHP** sites: `root`, `index index.php`, `try_files … /index.php?$query_string`, a `\.php$` location with
-  `fastcgi_params` and `SCRIPT_FILENAME`, and a rule denying dotfiles (except `.well-known`).
+- for **static** sites: `root`, `index`, `try_files $uri $uri/ =404`, and a rule denying hidden files (except `.well-known/`),
+- for **PHP** sites: `root`, `index index.php`, the same hidden-file rule, `try_files … /index.php?$query_string`, and a
+  `\.php$` location with `try_files $fastcgi_script_name =404` (only existing scripts run), `fastcgi_params` and
+  `SCRIPT_FILENAME`.
+
+Every value in a generated config is validated first, so nothing typed into a prompt or flag can add directives;
+see [Security](security.md).
 
 The `ngx` log format (in `sites-enabled/00-ngx-logformat.conf`) is the standard "combined" format plus
 `rt=$request_time`, so `ngx show` can report latency.
@@ -88,11 +94,11 @@ The `ngx` log format (in `sites-enabled/00-ngx-logformat.conf`) is the standard 
 
 Every change is one transaction:
 
-1. **Back up** each file about to change to `/var/lib/ngx/backups/<YYYYmmdd-HHMMSS>/`.
-2. **Write** the new files. Each file is written to a temporary name and then renamed over the old one, so nginx
-   never sees a half-written file.
-3. **Test** with `nginx -t`.
-4. If the test fails, **roll back**: every touched file and link is restored exactly as it was, and the nginx errors
+1. **Back up** each file about to change to `/var/lib/ngx/backups/<YYYYmmdd-HHMMSS>/` (root-only, `0700`).
+2. **Write** the new files. Each file is written to an exclusively created temporary name and then renamed over the
+   old one, so nginx never sees a half-written file. Existing files keep their permissions.
+3. **Test** with `nginx -t -c <nginx.conf>`, on the configuration ngx manages.
+4. If the test fails, or nginx can't be found to run it, **roll back**: every touched file and link is restored exactly as it was, and the nginx errors
    are printed. nginx keeps running the old config the whole time.
 5. If it passes, **reload** and wait until new nginx workers are running and the old ones have stopped accepting
    requests. Only then does ngx report success.

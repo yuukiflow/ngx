@@ -2,7 +2,7 @@
 
 ```
 cargo build
-cargo test            # unit tests: parser, site grouping, templates, log/nginx-output parsing
+cargo test            # unit tests: parser, site grouping, templates, validation/injection, log/nginx-output parsing
 cargo run -- ls
 ```
 
@@ -30,7 +30,7 @@ The certificates are generated relative to the current date, so rerun the script
 ## End-to-end test with real nginx
 
 `tests/e2e/arch.sh` runs in a throwaway Arch Linux container with real nginx and Node.js. It covers `init` on a
-layout without `sites-enabled`, `add` for proxy and static sites (checked with `curl`), `show`, prompt-free `edit`
+layout without `sites-enabled`, `add` for proxy and static sites (checked with `curl`), hidden files returning 403, rejected injection attempts, `show`, prompt-free `edit`
 (port change and rename), rollback of a broken `--raw` edit, a backend going down, error mapping from `nginx -t`,
 and `disable`.
 
@@ -72,6 +72,7 @@ docker run --rm -v $PWD/target/release/ngx:/usr/local/bin/ngx:ro \
 | `src/logs.rs` | Error log and access log parsing |
 | `src/ops.rs` | Change transaction: backup, write, test, roll back, reload |
 | `src/state.rs` | Stable site IDs |
+| `src/validate.rs` | Validation of every value that goes into a config or command line; terminal-safe output |
 | `src/render.rs` | Table and detail view, shared by the CLI (ANSI colors) and the dashboard |
 
 ## Regenerating the man pages
