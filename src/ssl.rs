@@ -52,12 +52,22 @@ impl CertState {
     }
 }
 
+/// Why a certificate couldn't be read when only root may read it (certbot's default).
+pub const NEEDS_ROOT: &str = "only root can read it — run with sudo";
+
+impl CertState {
+    /// Unreadable only because the current user isn't root.
+    pub fn needs_root(&self) -> bool {
+        matches!(self, CertState::Unreadable(w) if w == NEEDS_ROOT)
+    }
+}
+
 pub fn read_cert(path: &Path) -> CertState {
     let data = match std::fs::read(Env::get().host(path)) {
         Ok(d) => d,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return CertState::Missing(path.into()),
         Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
-            return CertState::Unreadable("permission denied (run as root)".into())
+            return CertState::Unreadable(NEEDS_ROOT.into())
         }
         Err(e) => return CertState::Unreadable(e.to_string()),
     };

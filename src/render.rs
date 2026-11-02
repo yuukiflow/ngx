@@ -116,7 +116,8 @@ pub fn ssl_cell(st: &Status) -> Line {
     match &st.cert {
         CertState::None => vec![seg("none", Tone::Dim)],
         CertState::Missing(_) => vec![seg("missing", Tone::Bad)],
-        CertState::Unreadable(_) => vec![seg("unreadable", Tone::Dim)],
+        c @ CertState::Unreadable(_) if c.needs_root() => vec![seg("needs sudo", Tone::Dim)],
+        CertState::Unreadable(_) => vec![seg("unreadable", Tone::Warn)],
         CertState::Ok(i) => {
             if st.cert.expired() {
                 vec![seg(format!("expired {}", date(i.not_after)), Tone::Bad)]
@@ -247,6 +248,7 @@ pub fn summary(rep: &Report, idx: &[usize]) -> Line {
     let mut expired = 0;
     let mut soon = 0;
     let mut soon_manual = 0;
+    let mut hidden = 0;
     for &i in idx {
         let st = &rep.status[i];
         match st.state {
@@ -256,6 +258,9 @@ pub fn summary(rep: &Report, idx: &[usize]) -> Line {
         }
         if st.cert.expired() {
             expired += 1;
+        }
+        if st.cert.needs_root() {
+            hidden += 1;
         }
         if st.cert.expiring_soon() {
             soon += 1;
@@ -277,6 +282,10 @@ pub fn summary(rep: &Report, idx: &[usize]) -> Line {
     if soon > 0 {
         let note = if soon_manual == soon { " (manual renewal)" } else if soon_manual > 0 { " (some manual)" } else { "" };
         l.extend([dot(), seg(format!("{soon} expiring soon{note}"), Tone::Warn)]);
+    }
+    if hidden > 0 {
+        let what = if hidden == 1 { "1 certificate is" } else { "certificates are" };
+        l.extend([dot(), seg(format!("{what} only readable by root: sudo ngx ls for expiry dates"), Tone::Dim)]);
     }
     l
 }
