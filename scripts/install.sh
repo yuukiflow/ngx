@@ -3,7 +3,7 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/yuukiflow/ngx/main/scripts/install.sh | sudo sh
 #
-# Options (environment): NGX_VERSION=v0.3.0 to pick a release, PREFIX=/usr/local.
+# Options (environment): NGX_VERSION=v0.4.0 to pick a release, PREFIX=/usr/local.
 # The download is checked against the release's SHA256SUMS before anything is installed.
 set -eu
 

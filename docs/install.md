@@ -18,7 +18,7 @@ curl -fsSL https://raw.githubusercontent.com/yuukiflow/ngx/main/scripts/install.
 
 The script picks the binary for your CPU, **verifies it against the release's `SHA256SUMS`** before installing, and
 puts `ngx` in `/usr/local/bin`, the man pages in `/usr/local/share/man/man1` and the bash, zsh and fish completions
-in `/usr/local/share/`. `NGX_VERSION=v0.3.0` installs a
+in `/usr/local/share/`. `NGX_VERSION=v0.4.0` installs a
 given release, `PREFIX=/opt/ngx` another location. If you'd rather read it before running it as root:
 
 ```
@@ -30,8 +30,8 @@ Each release also has **Debian/Ubuntu packages** (`ngx_<version>-1_amd64.deb`, `
 completions, depending on nginx:
 
 ```
-curl -fsSLO https://github.com/yuukiflow/ngx/releases/download/v0.3.0/ngx_0.3.0-1_amd64.deb
-sudo apt install ./ngx_0.3.0-1_amd64.deb
+curl -fsSLO https://github.com/yuukiflow/ngx/releases/download/v0.4.0/ngx_0.4.0-1_amd64.deb
+sudo apt install ./ngx_0.4.0-1_amd64.deb
 ```
 
 On **Arch**, the AUR package `ngx-bin` installs the same release (`yay -S ngx-bin`, or with `makepkg`; the
@@ -40,7 +40,7 @@ PKGBUILD is in `packaging/aur/`).
 By hand:
 
 ```
-v=v0.3.0; t=x86_64-unknown-linux-musl
+v=v0.4.0; t=x86_64-unknown-linux-musl
 curl -fsSLO https://github.com/yuukiflow/ngx/releases/download/$v/ngx-$v-$t.tar.gz
 curl -fsSLO https://github.com/yuukiflow/ngx/releases/download/$v/SHA256SUMS
 grep " ngx-$v-$t.tar.gz\$" SHA256SUMS | sha256sum -c -
