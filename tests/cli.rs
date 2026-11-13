@@ -133,3 +133,65 @@ fn rejects_injection() {
     }
     assert!(!sb.path().join("etc/nginx/sites-available/x.com.conf").exists());
 }
+
+#[test]
+fn suspend_then_resume() {
+    let sb = sandbox();
+    let conf = sb.path().join("etc/nginx/sites-available/shop.example.com.conf");
+    let page = sb.path().join("etc/nginx/ngx.d/shop.example.com/suspended.html");
+    let body = |p: &Path| std::fs::read_to_string(p).unwrap().lines().skip(1).collect::<Vec<_>>().join("\n");
+    let (_, code) = ngx(sb.path(), &["add", "-y", "-d", "shop.example.com", "-l", "3007", "--ssl", "none", "--route", "/api=9000"]);
+    assert_eq!(code, 0);
+    let before = body(&conf);
+
+    // hand-written sites must be converted first
+    let (out, code) = ngx(sb.path(), &["suspend", "app.example.com"]);
+    assert_ne!(code, 0, "{out}");
+
+    let notice = sb.path().join("notice.html");
+    std::fs::write(&notice, "<p>Site suspendu</p>").unwrap();
+    let (out, code) = ngx(sb.path(), &["suspend", "shop.example.com", "--page", notice.to_str().unwrap(), "--reason", "facture impayée"]);
+    assert_eq!(code, 0, "{out}");
+    let suspended = body(&conf);
+    assert!(suspended.contains("return 503;") && !suspended.contains("proxy_pass"));
+    assert_eq!(std::fs::read_to_string(&page).unwrap(), "<p>Site suspendu</p>");
+
+    let (ls, _) = ngx(sb.path(), &["ls", "--json"]);
+    let v: serde_json::Value = serde_json::from_str(&ls).unwrap();
+    let shop = v.as_array().unwrap().iter().find(|s| s["domain"] == "shop.example.com").unwrap();
+    assert_eq!(shop["status"], "suspended");
+    assert_eq!(shop["suspended"]["reason"], "facture impayée");
+    let (show, _) = ngx(sb.path(), &["show", "shop.example.com"]);
+    assert!(show.contains("SUSPENDED") && show.contains("facture impayée"), "{show}");
+    let (check, _) = ngx(sb.path(), &["check"]);
+    assert!(!check.contains("shop.example.com"), "a suspended site is not a problem: {check}");
+
+    // again: still suspended, the page is kept
+    let (out, code) = ngx(sb.path(), &["suspend", "shop.example.com"]);
+    assert_eq!(code, 0, "{out}");
+    assert_eq!(std::fs::read_to_string(&page).unwrap(), "<p>Site suspendu</p>");
+
+    // resume restores the exact config
+    let (out, code) = ngx(sb.path(), &["resume", "shop.example.com"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(!page.exists());
+    assert_eq!(body(&conf), before);
+
+    // ngx edit keeps a suspension
+    let (_, code) = ngx(sb.path(), &["suspend", "shop.example.com"]);
+    assert_eq!(code, 0);
+    let (out, code) = ngx(sb.path(), &["edit", "shop.example.com", "-y", "--max-body", "20m"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(body(&conf).contains("return 503;"), "ngx edit must not lift a suspension");
+    let (_, code) = ngx(sb.path(), &["resume", "shop.example.com"]);
+    assert_eq!(code, 0);
+    assert!(body(&conf).contains("proxy_pass http://127.0.0.1:3007;") && body(&conf).contains("client_max_body_size 20m;"));
+    let (out, code) = ngx(sb.path(), &["resume", "shop.example.com"]);
+    assert_eq!(code, 0);
+    assert!(out.contains("not suspended"));
+
+    // undo of the resume brings the suspension back
+    let (_, code) = ngx(sb.path(), &["undo", "-y"]);
+    assert_eq!(code, 0);
+    assert!(body(&conf).contains("return 503;") && page.exists());
+}

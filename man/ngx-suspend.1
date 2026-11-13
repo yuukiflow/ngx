@@ -1,0 +1,31 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH ngx-suspend 1  "ngx-suspend " 
+.SH NAME
+ngx\-suspend \- Suspend a site: every request gets a 503 and a notice page (`ngx resume` brings it back as it was)
+.SH SYNOPSIS
+\fBngx\-suspend\fR [\fB\-\-page\fR] [\fB\-\-reason\fR] [\fB\-\-dry\-run\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fISITE\fR> 
+.SH DESCRIPTION
+Suspend a site: every request gets a 503 and a notice page (`ngx resume` brings it back as it was)
+.SH OPTIONS
+.TP
+\fB\-\-page\fR \fI<FILE>\fR
+HTML page to show visitors (default: a short \\"temporarily unavailable\\" page)
+.TP
+\fB\-\-reason\fR \fI<REASON>\fR
+Note for yourself, shown by `ngx show` (never served to visitors)
+.TP
+\fB\-\-dry\-run\fR
+Show what would change without touching anything
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fISITE\fR>
+Site ID (from `ngx ls`) or any of its domain names
+.SH EXTRA
+Examples:
+  ngx suspend 4
+  ngx suspend shop.example.com \-\-page /srv/notices/suspended.html \-\-reason "invoice 2026\-11 unpaid"
+
+The site\*(Aqs settings are kept; the certificate keeps renewing. Running it again updates the page or the reason.

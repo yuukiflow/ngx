@@ -39,6 +39,12 @@ Enable a disabled site
 ngx\-disable(1)
 Disable a site without deleting it (`ngx enable` brings it back with the same ID)
 .TP
+ngx\-suspend(1)
+Suspend a site: every request gets a 503 and a notice page (`ngx resume` brings it back as it was)
+.TP
+ngx\-resume(1)
+Bring a suspended site back
+.TP
 ngx\-cert(1)
 Certificates: info, issue, renew, auto\-renewal on/off (wraps certbot)
 .TP

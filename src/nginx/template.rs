@@ -94,7 +94,31 @@ pub struct Options {
     /// Extra paths proxied to other local apps (`/api/` → 127.0.0.1:8080).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub routes: Vec<Route>,
+    /// Set by `ngx suspend`: every request gets a 503 and the notice page, the
+    /// rest of the spec is kept so `ngx resume` brings the site back as it was.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub suspended: Option<Suspension>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Suspension {
+    /// `YYYY-MM-DD`
+    pub since: String,
+    /// Note for the admin (shown by `ngx show`, never served to visitors).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// Page served while a site is suspended: `ngx.d/<domain>/suspended.html`.
+pub fn suspended_page(domain: &str) -> PathBuf {
+    site_dir(domain).join("suspended.html")
+}
+
+/// URI of the notice page inside a suspended site (internal only).
+const SUSPENDED_URI: &str = "/ngx-suspended.html";
+
+/// Default notice page, when `ngx suspend` isn't given one.
+pub const SUSPENDED_HTML: &str = "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<meta name=\"robots\" content=\"noindex\">\n<title>Site temporarily unavailable</title>\n<style>body{font-family:system-ui,sans-serif;max-width:34em;margin:20vh auto;padding:0 1em;color:#333;line-height:1.5}h1{font-size:1.4em}</style>\n</head>\n<body>\n<h1>This site is temporarily unavailable.</h1>\n<p>Please come back later.</p>\n</body>\n</html>\n";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Route {
@@ -214,6 +238,10 @@ fn proxy_headers(out: &mut String, indent: &str) {
 /// HTTPS block; `port`: the block's public port.
 fn body(spec: &Spec, out: &mut String, tls: bool, port: u16) {
     let o = &spec.opts;
+    if let Some(sus) = &o.suspended {
+        suspended_body(spec, sus, out, tls);
+        return;
+    }
     if tls && o.hsts {
         out.push_str("    add_header Strict-Transport-Security \"max-age=31536000\" always;\n");
     }
@@ -290,6 +318,26 @@ fn body(spec: &Spec, out: &mut String, tls: bool, port: u16) {
             out.push_str("    }\n");
         }
     }
+}
+
+/// A suspended site: everything answers 503 with the notice page. Snippets,
+/// routes, password protection and the backend are left out so nothing else is
+/// reachable; the ACME location (added before the body) still works, so the
+/// certificate keeps renewing.
+fn suspended_body(spec: &Spec, sus: &Suspension, out: &mut String, tls: bool) {
+    out.push_str(&format!("    # suspended by ngx since {} — `ngx resume {}` brings the site back\n", sus.since, spec.domain));
+    if tls && spec.opts.hsts {
+        out.push_str("    add_header Strict-Transport-Security \"max-age=31536000\" always;\n");
+    }
+    out.push_str("    add_header Retry-After 3600 always;\n    add_header Cache-Control \"no-store\" always;\n\n");
+    let (access, error) = spec.log_paths();
+    out.push_str(&format!("    access_log {} ngx;\n    error_log  {};\n\n", access.display(), error.display()));
+    out.push_str(&format!("    error_page 503 {SUSPENDED_URI};\n\n"));
+    out.push_str(&format!(
+        "    location = {SUSPENDED_URI} {{\n        internal;\n        alias {};\n        default_type text/html;\n    }}\n\n",
+        suspended_page(&spec.domain).display()
+    ));
+    out.push_str("    location / {\n        return 503;\n    }\n");
 }
 
 /// Hidden files (.git, .env, .htpasswd…) are never served.
@@ -420,6 +468,25 @@ mod tests {
             assert!(validate::spec(s).is_err(), "{s:?}");
         }
         assert!(validate::spec(&base).is_ok());
+    }
+
+    #[test]
+    fn suspended_site_serves_only_the_notice() {
+        let mut s = spec(Ssl::LetsEncrypt);
+        s.opts.routes = vec![Route::parse("/api=8080").unwrap()];
+        s.opts.auth = true;
+        s.opts.suspended = Some(Suspension { since: "2026-11-13".into(), reason: Some("unpaid".into()) });
+        let src = render(&s, false);
+        assert_eq!(Spec::from_config(&src), Some(s.clone()), "the spec round-trips");
+        assert!(parser::parse(&src).is_ok());
+        assert!(src.contains("return 503;"));
+        assert!(src.contains("error_page 503 /ngx-suspended.html;"));
+        assert!(src.contains("acme-challenge"), "certificates must keep renewing");
+        for gone in ["proxy_pass", "auth_basic \"", "include ", "unpaid"] {
+            assert!(!src.lines().filter(|l| !l.starts_with('#')).any(|l| l.contains(gone)), "{gone} must not be in a suspended config");
+        }
+        s.opts.suspended = None;
+        assert!(render(&s, false).contains("proxy_pass http://127.0.0.1:8080;"), "resuming restores everything");
     }
 
     #[test]

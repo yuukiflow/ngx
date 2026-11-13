@@ -151,6 +151,8 @@ pub struct Site {
     pub blocks: Vec<ServerBlock>,
     pub main: usize,
     pub managed: bool,
+    /// Suspended with `ngx suspend` (managed sites only).
+    pub suspended: Option<crate::nginx::template::Suspension>,
     pub parse_error: Option<String>,
 }
 
@@ -469,6 +471,7 @@ fn parse_file_with(config: &Path, file: &Path, enabled: bool, conf_d: bool, glob
         blocks,
         main,
         managed,
+        suspended: None,
         parse_error: err,
     };
     let src = match std::fs::read_to_string(&host) {
@@ -479,10 +482,11 @@ fn parse_file_with(config: &Path, file: &Path, enabled: bool, conf_d: bool, glob
         }
     };
     let managed = src.lines().take(3).any(|l| l.starts_with(MANAGED_MARKER));
+    let suspended = if managed { crate::nginx::template::Spec::from_config(&src).and_then(|s| s.opts.suspended) } else { None };
     match parser::parse(&src) {
         Ok(dirs) => extract_with(&dirs, global)
             .into_iter()
-            .map(|(d, a, b, m)| mk(d, a, b, m, None, managed))
+            .map(|(d, a, b, m)| Site { suspended: suspended.clone(), ..mk(d, a, b, m, None, managed) })
             .collect(),
         Err(e) => {
             let stem = base.trim_end_matches(".conf").to_string();

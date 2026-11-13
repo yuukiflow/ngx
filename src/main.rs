@@ -103,6 +103,29 @@ enum Cmd {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Suspend a site: every request gets a 503 and a notice page (`ngx resume` brings it back as it was)
+    #[command(after_help = "Examples:\n  ngx suspend 4\n  ngx suspend shop.example.com --page /srv/notices/suspended.html --reason \"invoice 2026-11 unpaid\"\n\nThe site's settings are kept; the certificate keeps renewing. Running it again updates the page or the reason.")]
+    Suspend {
+        #[arg(help = SITE_HELP)]
+        site: String,
+        /// HTML page to show visitors (default: a short \"temporarily unavailable\" page)
+        #[arg(long, value_name = "FILE")]
+        page: Option<std::path::PathBuf>,
+        /// Note for yourself, shown by `ngx show` (never served to visitors)
+        #[arg(long)]
+        reason: Option<String>,
+        /// Show what would change without touching anything
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Bring a suspended site back
+    Resume {
+        #[arg(help = SITE_HELP)]
+        site: String,
+        /// Show what would change without touching anything
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Certificates: info, issue, renew, auto-renewal on/off (wraps certbot)
     #[command(subcommand)]
     Cert(cmd::CertCmd),
@@ -262,6 +285,8 @@ fn main() {
         Some(Cmd::Rm { site, delete_cert, yes, dry_run }) => cmd::rm(&site, delete_cert, yes, dry_run),
         Some(Cmd::Enable { site, dry_run }) => cmd::set_enabled(&site, true, dry_run),
         Some(Cmd::Disable { site, dry_run }) => cmd::set_enabled(&site, false, dry_run),
+        Some(Cmd::Suspend { site, page, reason, dry_run }) => cmd::suspend(&site, page.as_deref(), reason.as_deref(), dry_run),
+        Some(Cmd::Resume { site, dry_run }) => cmd::resume(&site, dry_run),
         Some(Cmd::Edit { site, snippet: Some(name), .. }) => cmd::edit_snippet(&site, &name),
         Some(Cmd::Edit { site, raw, args, .. }) => cmd::edit(&site, args, raw),
         Some(Cmd::Auth(c)) => cmd::auth(c),

@@ -12,6 +12,8 @@ pub enum State {
     Up,
     Down,
     Disabled,
+    /// `ngx suspend`: served, but only with the notice page.
+    Suspended,
 }
 
 #[derive(Debug, Clone)]
@@ -117,6 +119,9 @@ fn site_status(s: &Site, config_err: Option<String>, nginx_up: bool) -> Status {
         (State::Down, Some(e))
     } else if !nginx_up {
         (State::Down, Some("nginx is not running".into()))
+    } else if s.suspended.is_some() {
+        // the backend isn't used while suspended: don't probe it
+        (State::Suspended, None)
     } else {
         match backend_error(s) {
             Some(e) => (State::Down, Some(e)),

@@ -31,6 +31,8 @@ ID  STATUS  DOMAIN               SSL                     RENEW   IN   LOCAL     
 - **Change them the same way** (`ngx edit`): the questions come back pre-filled; you see a diff before anything is written.
   Hand-written sites can be converted without losing their extra directives; files with several sites can be
   [split](docs/commands.md#ngx-split); `ngx regen --all` brings every site to the current template (HTTP/2, …).
+- **Suspend a site** (`ngx suspend`): visitors get a 503 notice page, the certificate keeps renewing, and
+  `ngx resume` brings the site back exactly as it was.
 - **Changes can't break nginx**: every change is backed up, checked with `nginx -t`, rolled back if it fails, and
   reported as done only once nginx is serving the new config. `ngx history` shows who changed what; `ngx undo`
   reverts it.

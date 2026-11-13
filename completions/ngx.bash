@@ -67,6 +67,9 @@ _ngx() {
             ngx,reload)
                 cmd="ngx__subcmd__reload"
                 ;;
+            ngx,resume)
+                cmd="ngx__subcmd__resume"
+                ;;
             ngx,rm)
                 cmd="ngx__subcmd__rm"
                 ;;
@@ -75,6 +78,9 @@ _ngx() {
                 ;;
             ngx,split)
                 cmd="ngx__subcmd__split"
+                ;;
+            ngx,suspend)
+                cmd="ngx__subcmd__suspend"
                 ;;
             ngx,test)
                 cmd="ngx__subcmd__test"
@@ -190,6 +196,9 @@ _ngx() {
             ngx__subcmd__help,reload)
                 cmd="ngx__subcmd__help__subcmd__reload"
                 ;;
+            ngx__subcmd__help,resume)
+                cmd="ngx__subcmd__help__subcmd__resume"
+                ;;
             ngx__subcmd__help,rm)
                 cmd="ngx__subcmd__help__subcmd__rm"
                 ;;
@@ -198,6 +207,9 @@ _ngx() {
                 ;;
             ngx__subcmd__help,split)
                 cmd="ngx__subcmd__help__subcmd__split"
+                ;;
+            ngx__subcmd__help,suspend)
+                cmd="ngx__subcmd__help__subcmd__suspend"
                 ;;
             ngx__subcmd__help,test)
                 cmd="ngx__subcmd__help__subcmd__test"
@@ -236,7 +248,7 @@ _ngx() {
 
     case "${cmd}" in
         ngx)
-            opts="-h -V --help --version ls show add edit rm enable disable cert logs test reload doctor regen split auth check history undo init tui completions man help"
+            opts="-h -V --help --version ls show add edit rm enable disable suspend resume cert logs test reload doctor regen split auth check history undo init tui completions man help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -872,7 +884,7 @@ _ngx() {
             return 0
             ;;
         ngx__subcmd__help)
-            opts="ls show add edit rm enable disable cert logs test reload doctor regen split auth check history undo init tui completions man help"
+            opts="ls show add edit rm enable disable suspend resume cert logs test reload doctor regen split auth check history undo init tui completions man help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -1221,6 +1233,20 @@ _ngx() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        ngx__subcmd__help__subcmd__resume)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         ngx__subcmd__help__subcmd__rm)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
@@ -1250,6 +1276,20 @@ _ngx() {
             return 0
             ;;
         ngx__subcmd__help__subcmd__split)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        ngx__subcmd__help__subcmd__suspend)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -1419,6 +1459,20 @@ _ngx() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        ngx__subcmd__resume)
+            opts="-h --dry-run --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         ngx__subcmd__rm)
             opts="-y -h --delete-cert --yes --dry-run --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
@@ -1454,6 +1508,28 @@ _ngx() {
                 return 0
             fi
             case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        ngx__subcmd__suspend)
+            opts="-h --page --reason --dry-run --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --page)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --reason)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
                 *)
                     COMPREPLY=()
                     ;;

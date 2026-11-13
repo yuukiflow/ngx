@@ -151,6 +151,24 @@ _arguments "${_arguments_options[@]}" : \
 ':site -- Site ID (from `ngx ls`) or any of its domain names:_default' \
 && ret=0
 ;;
+(suspend)
+_arguments "${_arguments_options[@]}" : \
+'--page=[HTML page to show visitors (default\: a short \\"temporarily unavailable\\" page)]:FILE:_files' \
+'--reason=[Note for yourself, shown by \`ngx show\` (never served to visitors)]:REASON:_default' \
+'--dry-run[Show what would change without touching anything]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':site -- Site ID (from `ngx ls`) or any of its domain names:_default' \
+&& ret=0
+;;
+(resume)
+_arguments "${_arguments_options[@]}" : \
+'--dry-run[Show what would change without touching anything]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':site -- Site ID (from `ngx ls`) or any of its domain names:_default' \
+&& ret=0
+;;
 (cert)
 _arguments "${_arguments_options[@]}" : \
 '-h[Print help]' \
@@ -471,6 +489,14 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(suspend)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(resume)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (cert)
 _arguments "${_arguments_options[@]}" : \
 ":: :_ngx__subcmd__help__subcmd__cert_commands" \
@@ -606,6 +632,8 @@ _ngx_commands() {
 'rm:Remove a site'\''s configuration (a backup is kept)' \
 'enable:Enable a disabled site' \
 'disable:Disable a site without deleting it (\`ngx enable\` brings it back with the same ID)' \
+'suspend:Suspend a site\: every request gets a 503 and a notice page (\`ngx resume\` brings it back as it was)' \
+'resume:Bring a suspended site back' \
 'cert:Certificates\: info, issue, renew, auto-renewal on/off (wraps certbot)' \
 'logs:Show a site'\''s access log (or error log with -e)' \
 'test:Validate the nginx configuration (\`nginx -t\`)' \
@@ -792,6 +820,8 @@ _ngx__subcmd__help_commands() {
 'rm:Remove a site'\''s configuration (a backup is kept)' \
 'enable:Enable a disabled site' \
 'disable:Disable a site without deleting it (\`ngx enable\` brings it back with the same ID)' \
+'suspend:Suspend a site\: every request gets a 503 and a notice page (\`ngx resume\` brings it back as it was)' \
+'resume:Bring a suspended site back' \
 'cert:Certificates\: info, issue, renew, auto-renewal on/off (wraps certbot)' \
 'logs:Show a site'\''s access log (or error log with -e)' \
 'test:Validate the nginx configuration (\`nginx -t\`)' \
@@ -940,6 +970,11 @@ _ngx__subcmd__help__subcmd__reload_commands() {
     local commands; commands=()
     _describe -t commands 'ngx help reload commands' commands "$@"
 }
+(( $+functions[_ngx__subcmd__help__subcmd__resume_commands] )) ||
+_ngx__subcmd__help__subcmd__resume_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help resume commands' commands "$@"
+}
 (( $+functions[_ngx__subcmd__help__subcmd__rm_commands] )) ||
 _ngx__subcmd__help__subcmd__rm_commands() {
     local commands; commands=()
@@ -954,6 +989,11 @@ _ngx__subcmd__help__subcmd__show_commands() {
 _ngx__subcmd__help__subcmd__split_commands() {
     local commands; commands=()
     _describe -t commands 'ngx help split commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__help__subcmd__suspend_commands] )) ||
+_ngx__subcmd__help__subcmd__suspend_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx help suspend commands' commands "$@"
 }
 (( $+functions[_ngx__subcmd__help__subcmd__test_commands] )) ||
 _ngx__subcmd__help__subcmd__test_commands() {
@@ -1005,6 +1045,11 @@ _ngx__subcmd__reload_commands() {
     local commands; commands=()
     _describe -t commands 'ngx reload commands' commands "$@"
 }
+(( $+functions[_ngx__subcmd__resume_commands] )) ||
+_ngx__subcmd__resume_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx resume commands' commands "$@"
+}
 (( $+functions[_ngx__subcmd__rm_commands] )) ||
 _ngx__subcmd__rm_commands() {
     local commands; commands=()
@@ -1019,6 +1064,11 @@ _ngx__subcmd__show_commands() {
 _ngx__subcmd__split_commands() {
     local commands; commands=()
     _describe -t commands 'ngx split commands' commands "$@"
+}
+(( $+functions[_ngx__subcmd__suspend_commands] )) ||
+_ngx__subcmd__suspend_commands() {
+    local commands; commands=()
+    _describe -t commands 'ngx suspend commands' commands "$@"
 }
 (( $+functions[_ngx__subcmd__test_commands] )) ||
 _ngx__subcmd__test_commands() {

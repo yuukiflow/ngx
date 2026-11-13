@@ -1,6 +1,6 @@
 # Command reference
 
-Commands that change anything (`add`, `edit`, `rm`, `enable`, `disable`, `regen`, `split`, `cert issue|renew|auto`,
+Commands that change anything (`add`, `edit`, `rm`, `enable`, `disable`, `suspend`, `resume`, `regen`, `split`, `cert issue|renew|auto`,
 `auth add|rm`, `undo`, `reload`, `init`, `check --install-timer`) need root. Read-only commands (`ls`, `show`, `logs`, `check`, `history`, `test`, `doctor`,
 the dashboard) work as a normal user, with some details hidden (see [Running without root](troubleshooting.md#running-without-root)).
 
@@ -24,6 +24,7 @@ Dates are shown as `dd/mm/yy`.
 - [ngx split](#ngx-split)
 - [ngx rm](#ngx-rm)
 - [ngx enable / disable](#ngx-enable--ngx-disable)
+- [ngx suspend / resume](#ngx-suspend--ngx-resume)
 - [ngx cert](#ngx-cert)
 - [ngx auth](#ngx-auth)
 - [ngx check](#ngx-check)
@@ -391,6 +392,29 @@ ngx disable <site> [--dry-run]
 - Sites in `conf.d/` are renamed to `<name>.conf.disabled` and back.
 
 If the file defines several sites, they are toggled together (ngx prints a note).
+
+---
+
+## ngx suspend / ngx resume
+
+```
+ngx suspend <site> [--page FILE] [--reason TEXT] [--dry-run]
+ngx resume <site> [--dry-run]
+```
+
+`suspend` keeps a site online but answers every request with `503 Service Unavailable` and a notice page, for
+example while an invoice is unpaid. `resume` brings the site back exactly as it was.
+
+- Only sites created by ngx can be suspended; convert a hand-written one first with `ngx edit`.
+- The page is `--page FILE` (HTML, up to 1 MB), or a short "temporarily unavailable" page. It is stored as
+  `ngx.d/<domain>/suspended.html` and can't be requested directly.
+- `--reason` is a note for you, shown by `ngx show` and `--json`; visitors never see it.
+- While suspended, the backend, extra routes, password protection and snippets are left out of the config. The
+  ACME location stays, so the certificate keeps renewing. Responses carry `Retry-After` and `Cache-Control: no-store`.
+- `ngx ls` shows the site as `◐ suspended`, `ngx check` doesn't report it as down and doesn't probe its backend.
+- Running `suspend` again on a suspended site keeps it suspended and updates the page or the reason. `resume` on a
+  site that isn't suspended does nothing. Both exit 0 in these cases, so scripts can call them freely.
+- `ngx edit` keeps the suspension; only `ngx resume` lifts it.
 
 ---
 

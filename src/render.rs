@@ -109,6 +109,7 @@ pub fn state_cell(st: State) -> Line {
         State::Up => vec![seg("●", Tone::Good), plain(" up")],
         State::Down => vec![seg("○", Tone::Bad), seg(" down", Tone::Bad)],
         State::Disabled => vec![seg("◌ off", Tone::Dim)],
+        State::Suspended => vec![seg("◐", Tone::Warn), seg(" suspended", Tone::Warn)],
     }
 }
 
@@ -245,6 +246,7 @@ pub fn summary(rep: &Report, idx: &[usize]) -> Line {
     let mut up = 0;
     let mut down = 0;
     let mut off = 0;
+    let mut suspended = 0;
     let mut expired = 0;
     let mut soon = 0;
     let mut soon_manual = 0;
@@ -255,6 +257,7 @@ pub fn summary(rep: &Report, idx: &[usize]) -> Line {
             State::Up => up += 1,
             State::Down => down += 1,
             State::Disabled => off += 1,
+            State::Suspended => suspended += 1,
         }
         if st.cert.expired() {
             expired += 1;
@@ -275,6 +278,9 @@ pub fn summary(rep: &Report, idx: &[usize]) -> Line {
     l.extend([dot(), seg(format!("{down} down"), if down > 0 { Tone::Bad } else { Tone::Plain })]);
     if off > 0 {
         l.extend([dot(), seg(format!("{off} disabled"), Tone::Dim)]);
+    }
+    if suspended > 0 {
+        l.extend([dot(), seg(format!("{suspended} suspended"), Tone::Warn)]);
     }
     if expired > 0 {
         l.extend([dot(), seg(format!("{expired} cert{} expired", if expired == 1 { "" } else { "s" }), Tone::Bad)]);
@@ -347,6 +353,7 @@ pub fn detail(s: &Site, st: &Status) -> Vec<Line> {
         State::Up => vec![seg("● UP", Tone::Good)],
         State::Down => vec![seg("○ DOWN", Tone::Bad)],
         State::Disabled => vec![seg("◌ DISABLED", Tone::Dim)],
+        State::Suspended => vec![seg("◐ SUSPENDED", Tone::Warn)],
     };
     let gap = DETAIL_WIDTH.saturating_sub(s.domain.width() + width(&badge)).max(2);
     let mut head = vec![seg(s.domain.clone(), Tone::Bold), plain(" ".repeat(gap))];
@@ -373,6 +380,14 @@ pub fn detail(s: &Site, st: &Status) -> Vec<Line> {
         cfg.push(seg(format!("  ({})", notes.join(", ")), Tone::Dim));
     }
     d.top("Config", cfg);
+    if let Some(sus) = &s.suspended {
+        let mut l = vec![seg(format!("since {}", sus.since), Tone::Warn)];
+        if let Some(r) = &sus.reason {
+            l.push(plain(format!(" — {r}")));
+        }
+        l.push(seg(format!("  (`ngx resume {}` brings it back)", s.id), Tone::Dim));
+        d.top("Suspended", l);
+    }
     if let Some(e) = &st.error {
         d.top("Problem", vec![seg(e.clone(), Tone::Bad)]);
     }
@@ -590,7 +605,8 @@ pub fn json(s: &Site, st: &Status) -> serde_json::Value {
         "id": s.id,
         "domain": s.domain,
         "aliases": s.aliases,
-        "status": match st.state { State::Up => "up", State::Down => "down", State::Disabled => "disabled" },
+        "status": match st.state { State::Up => "up", State::Down => "down", State::Disabled => "disabled", State::Suspended => "suspended" },
+        "suspended": s.suspended,
         "error": st.error,
         "enabled": s.enabled,
         "managed": s.managed,

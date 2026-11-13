@@ -456,6 +456,8 @@ fn build_options(a: &AddArgs, cur: Option<&template::Options>, domain: &str, ali
         routes: flag_routes.clone().unwrap_or(c.routes.clone()),
         headers: on_off(a.headers).unwrap_or(c.headers),
         health: a.health.as_ref().map(|v| (!off(v)).then(|| v.clone())).unwrap_or(c.health.clone()).filter(|_| proxy),
+        // `ngx edit` keeps a suspension; only `ngx resume` lifts it
+        suspended: c.suspended.clone(),
     };
     if a.no_questions() {
         return Ok(o);

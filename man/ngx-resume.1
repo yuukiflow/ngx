@@ -1,0 +1,19 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH ngx-resume 1  "ngx-resume " 
+.SH NAME
+ngx\-resume \- Bring a suspended site back
+.SH SYNOPSIS
+\fBngx\-resume\fR [\fB\-\-dry\-run\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fISITE\fR> 
+.SH DESCRIPTION
+Bring a suspended site back
+.SH OPTIONS
+.TP
+\fB\-\-dry\-run\fR
+Show what would change without touching anything
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fISITE\fR>
+Site ID (from `ngx ls`) or any of its domain names
